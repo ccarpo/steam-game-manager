@@ -274,6 +274,7 @@ export default function SettingsPage() {
               <SyncBtn label="🔄 Sync Wishlist" color="blue" running={syncRunning} id="wishlist" onClick={() => runSync("/api/sync/wishlist", "wishlist")} />
               <SyncBtn label="🎮 Sync Owned" color="green" running={syncRunning} id="owned" onClick={() => runSync("/api/sync/owned", "owned")} />
               <SyncBtn label="🖼 Download Images" color="purple" running={syncRunning} id="images" onClick={() => runSync("/api/sync/images", "images")} />
+              <SyncBtn label="🔁 Retry 404s" color="orange" running={syncRunning} id="images-retry" onClick={() => runSync("/api/sync/images?retry404=true", "images-retry")} />
               <SyncBtn label="🚫 Import Ignored" color="red" running={syncRunning} id="ignored" onClick={() => setShowIgnoredInput(true)} />
             </div>
             {showIgnoredInput && (
@@ -398,16 +399,22 @@ export default function SettingsPage() {
             >🔗 Recalculate Similarities</button>
             <button
               onClick={async () => {
-                appendLog("Flushing WAL...");
+                appendLog("Flushing WAL & backing up...");
                 try {
                   const res = await fetch("/api/db/flush-wal", { method: "POST" });
                   const data = await res.json();
-                  if (data.ok) appendLog("WAL flushed successfully.");
-                  else appendLog("Error: " + JSON.stringify(data));
+                  if (data.ok) {
+                    if (data.backed_up) {
+                      appendLog(`✓ WAL flushed, backup saved: ${data.backup_file}`);
+                      data.delta?.forEach((l: string) => appendLog(`  ${l}`));
+                    } else {
+                      appendLog("✓ WAL flushed. No changes since last backup.");
+                    }
+                  } else appendLog("Error: " + JSON.stringify(data));
                 } catch (err) { appendLog(`Error: ${err}`); }
               }}
               className="ml-2 px-3 py-1.5 rounded text-xs border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-            >💾 Flush WAL</button>
+            >💾 Flush & Backup</button>
             <label className="ml-4 flex items-center gap-1.5 text-xs text-muted">
               Max backups
               <input
@@ -558,6 +565,7 @@ function SyncBtn({ label, color, running, id, onClick }: { label: string; color:
     yellow: "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10",
     purple: "border-purple-500/50 text-purple-400 hover:bg-purple-500/10",
     red: "border-red-500/50 text-red-400 hover:bg-red-500/10",
+    orange: "border-orange-500/50 text-orange-400 hover:bg-orange-500/10",
   };
   const activeMap: Record<string, string> = {
     blue: "bg-blue-500/20 border-blue-500 text-blue-400",
@@ -565,6 +573,7 @@ function SyncBtn({ label, color, running, id, onClick }: { label: string; color:
     yellow: "bg-yellow-500/20 border-yellow-500 text-yellow-400",
     purple: "bg-purple-500/20 border-purple-500 text-purple-400",
     red: "bg-red-500/20 border-red-500 text-red-400",
+    orange: "bg-orange-500/20 border-orange-500 text-orange-400",
   };
   return (
     <button onClick={onClick} disabled={!!running}

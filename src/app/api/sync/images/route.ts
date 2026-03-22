@@ -12,6 +12,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function downloadFile(url: string, dest: string, retries = 3): Promise<boolean> {
   if (fs.existsSync(dest)) return false;
+  // Skip if previously 404'd (marker file)
+  const marker = dest + ".404";
+  if (fs.existsSync(marker)) return false;
   const tmp = dest + ".tmp";
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -20,6 +23,11 @@ async function downloadFile(url: string, dest: string, retries = 3): Promise<boo
         log.debug(`download retry ${attempt + 1}/${retries} (${res.status}): ${url}`);
         if (attempt < retries) { await sleep(1000 * Math.pow(2, attempt)); continue; }
         log.error(`download failed after ${retries} retries (${res.status}): ${url}`);
+        return false;
+      }
+      if (res.status === 404) {
+        log.debug(`download 404 (marked): ${url}`);
+        try { fs.writeFileSync(marker, ""); } catch {}
         return false;
       }
       if (!res.ok) {
@@ -41,14 +49,29 @@ async function downloadFile(url: string, dest: string, retries = 3): Promise<boo
   return false;
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const encoder = new TextEncoder();
+  const url = new URL(request.url);
+  const retry404 = url.searchParams.get("retry404") === "true";
 
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
+
+      // If retry404, delete all .404 marker files first
+      if (retry404 && fs.existsSync(ASSETS_DIR)) {
+        let cleared = 0;
+        for (const appDir of fs.readdirSync(ASSETS_DIR)) {
+          const full = path.join(ASSETS_DIR, appDir);
+          if (!fs.statSync(full).isDirectory()) continue;
+          for (const f of fs.readdirSync(full)) {
+            if (f.endsWith(".404")) { try { fs.unlinkSync(path.join(full, f)); cleared++; } catch {} }
+          }
+        }
+        send({ type: "status", message: `Cleared ${cleared} failed-download markers, retrying...` });
+      }
 
       try {
         const db = getDb();
@@ -79,8 +102,8 @@ export async function POST() {
         for (const g of games) {
           const dir = path.join(ASSETS_DIR, String(g.steam_appid));
           const existing = fs.existsSync(dir) ? new Set(fs.readdirSync(dir)) : new Set<string>();
-
-          // Header
+          // Treat .404 markers as if the file exists (skip re-downloading known 404s)
+          for (const f of existing) { if (f.endsWith(".404")) existing.add(f.slice(0, -4)); }
           if (dlHeaders && !existing.has("header.jpg")) { needsImages.push(g); continue; }
 
           // Check screenshots
@@ -119,8 +142,8 @@ export async function POST() {
           const dir = path.join(ASSETS_DIR, String(appid));
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           const existing = new Set(fs.readdirSync(dir));
-
-          // Read appdetails cache once
+          // Treat .404 markers as if the file exists
+          for (const f of existing) { if (f.endsWith(".404")) existing.add(f.slice(0, -4)); }
           let cachedData: { header_image?: string; screenshots?: { path_thumbnail: string; path_full: string }[] } | null = null;
           const cached = db.prepare("SELECT appdetails FROM steam_cache WHERE appid = ?").get(appid) as { appdetails: string } | undefined;
           if (cached) {

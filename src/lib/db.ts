@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { generateTxt, generateCsv } from "./export";
 
 const DB_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "games.db");
@@ -37,6 +38,43 @@ function computeDelta(d: Database.Database): string[] {
   return lines;
 }
 
+/** Flush WAL + backup if changes detected. Returns { backed_up, delta, backup_file } */
+export /** Flush WAL + backup if changes detected. Returns { backed_up, delta, backup_file } */
+export function flushAndBackup(): { backed_up: boolean; delta: string[]; backup_file?: string } {
+  const d = getDb();
+  const delta = computeDelta(d);
+  d.pragma("wal_checkpoint(TRUNCATE)");
+  if (delta.length === 0) return { backed_up: false, delta };
+  const ts = new Date(Date.now() + 5.5 * 3600000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const backupFolder = path.join(BACKUP_DIR, ts);
+  if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder, { recursive: true });
+  // Copy DB
+  fs.copyFileSync(DB_PATH, path.join(backupFolder, "games.db"));
+  // Write delta log
+  fs.writeFileSync(path.join(backupFolder, "delta.log"), delta.join("\n") + "\n");
+  // Export TXT and CSV
+  try {
+    fs.writeFileSync(path.join(backupFolder, "games.txt"), generateTxt(d));
+    fs.writeFileSync(path.join(backupFolder, "games.csv"), generateCsv(d));
+  } catch (e) { console.error("[db] Export during backup failed:", e); }
+  // Keep only last N backups
+  let maxBackups = 5;
+  try {
+    const row = d.prepare("SELECT value FROM settings WHERE key = 'max_backups'").get() as { value: string } | undefined;
+    if (row) maxBackups = Math.max(1, parseInt(row.value) || 5);
+  } catch {}
+  const backups = fs.readdirSync(BACKUP_DIR).filter(f => {
+    try { return fs.statSync(path.join(BACKUP_DIR, f)).isDirectory(); } catch { return false; }
+  }).sort();
+  while (backups.length > maxBackups) {
+    const old = backups.shift()!;
+    fs.rmSync(path.join(BACKUP_DIR, old), { recursive: true, force: true });
+  }
+  // Reset snapshot so next flush compares from this point
+  startSnapshot = takeSnapshot(d);
+  return { backed_up: true, delta, backup_file: ts };
+}
+
 export function resetDb(): void {
   if (db) { db.close(); db = null; }
   for (const suffix of ["", "-wal", "-shm"]) {
@@ -71,32 +109,7 @@ export function getDb(): Database.Database {
   const cleanup = () => {
     if (db) {
       try {
-        const delta = computeDelta(db);
-        db.pragma("wal_checkpoint(TRUNCATE)");
-        if (delta.length > 0) {
-          if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
-          const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-          const backupPath = path.join(BACKUP_DIR, `games_${ts}.db`);
-          fs.copyFileSync(DB_PATH, backupPath);
-          fs.writeFileSync(path.join(BACKUP_DIR, `games_${ts}.log`), delta.join("\n") + "\n");
-          // Keep only last N backups (configurable via settings.max_backups, default 5)
-          let maxBackups = 5;
-          try {
-            const row = db.prepare("SELECT value FROM settings WHERE key = 'max_backups'").get() as { value: string } | undefined;
-            if (row) maxBackups = Math.max(1, parseInt(row.value) || 5);
-          } catch {}
-          const backups = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("games_") && f.endsWith(".db")).sort();
-          while (backups.length > maxBackups) {
-            const old = backups.shift()!;
-            fs.unlinkSync(path.join(BACKUP_DIR, old));
-            const logFile = path.join(BACKUP_DIR, old.replace(".db", ".log"));
-            if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
-          }
-          console.log(`[db] Backup saved: ${path.basename(backupPath)}`);
-          delta.forEach(l => console.log(`[db]   ${l}`));
-        } else {
-          console.log("[db] No changes detected, skipping backup.");
-        }
+        flushAndBackup();
         db.close();
         console.log("[db] WAL flushed and DB closed.");
       } catch (e) { console.error("[db] Cleanup error:", e); }
