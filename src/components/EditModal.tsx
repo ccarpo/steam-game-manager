@@ -155,18 +155,17 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
       .filter((e) => e.tag_id)
       .map((e) => ({ tag_id: e.tag_id, subtag_id: e.subtag_id || null }));
     try {
-      await onSave(game.id, {
-        name,
-        notes,
-        steam_appid: steamAppid ? Number(steamAppid) : null,
-        description,
-        developers,
-        publishers,
-        release_date: releaseDate,
-        added_at: addedAt || undefined,
-        steam_genres: JSON.stringify(genres.split(",").map((s: string) => s.trim()).filter(Boolean)),
-        tags: tagData,
-      });
+      const data: Record<string, unknown> = { name, notes, tags: tagData };
+      if (steamAppid) data.steam_appid = Number(steamAppid);
+      else if (game.steam_appid) data.steam_appid = null;
+      if (addedAt) data.added_at = addedAt;
+      if (description || game.description) data.description = description;
+      if (developers || game.developers) data.developers = developers;
+      if (publishers || game.publishers) data.publishers = publishers;
+      if (releaseDate || game.release_date) data.release_date = releaseDate;
+      const genreArr = genres.split(",").map((s: string) => s.trim()).filter(Boolean);
+      if (genreArr.length > 0 || (game.steam_genres && game.steam_genres !== "[]")) data.steam_genres = JSON.stringify(genreArr);
+      await onSave(game.id, data);
       setSaving(false);
       onClose();
     } catch (err) {

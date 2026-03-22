@@ -408,6 +408,19 @@ export default function SettingsPage() {
               }}
               className="ml-2 px-3 py-1.5 rounded text-xs border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 transition-colors"
             >💾 Flush WAL</button>
+            <label className="ml-4 flex items-center gap-1.5 text-xs text-muted">
+              Max backups
+              <input
+                type="number" min={1} max={50}
+                defaultValue={settings.max_backups || "5"}
+                onBlur={(e) => {
+                  const v = Math.max(1, Math.min(50, parseInt(e.target.value) || 5));
+                  e.target.value = String(v);
+                  update("max_backups", String(v));
+                }}
+                className="w-14 bg-background border border-border rounded px-1.5 py-0.5 text-xs text-center"
+              />
+            </label>
           </div>
 
           {/* Tag & Subtag Management */}

@@ -4,8 +4,38 @@ import fs from "fs";
 
 const DB_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "games.db");
+const BACKUP_DIR = path.join(DB_DIR, "backups");
 
 let db: Database.Database | null = null;
+
+// Snapshot at startup for diff on exit
+let startSnapshot: { gameCount: number; gameIds: Set<number>; tagCount: number; updated_at: string } | null = null;
+
+function takeSnapshot(d: Database.Database) {
+  const games = d.prepare("SELECT id FROM games").all() as { id: number }[];
+  const tagCount = (d.prepare("SELECT COUNT(*) as c FROM game_tags").get() as { c: number }).c;
+  const latest = (d.prepare("SELECT MAX(updated_at) as u FROM games").get() as { u: string | null })?.u || "";
+  return { gameCount: games.length, gameIds: new Set(games.map(g => g.id)), tagCount, updated_at: latest };
+}
+
+function computeDelta(d: Database.Database): string[] {
+  if (!startSnapshot) return [];
+  const now = takeSnapshot(d);
+  const lines: string[] = [];
+  const added = [...now.gameIds].filter(id => !startSnapshot!.gameIds.has(id));
+  const removed = [...startSnapshot.gameIds].filter(id => !now.gameIds.has(id));
+  if (added.length > 0) {
+    const names = d.prepare(`SELECT id, name FROM games WHERE id IN (${added.join(",")})`).all() as { id: number; name: string }[];
+    lines.push(`Games added (${added.length}): ${names.map(g => `${g.name} [${g.id}]`).join(", ")}`);
+  }
+  if (removed.length > 0) lines.push(`Games removed (${removed.length}): IDs ${removed.join(", ")}`);
+  if (now.gameCount === startSnapshot.gameCount && added.length === 0 && removed.length === 0 && now.updated_at !== startSnapshot.updated_at) {
+    lines.push(`Games updated (updated_at changed: ${startSnapshot.updated_at} → ${now.updated_at})`);
+  }
+  const tagDiff = now.tagCount - startSnapshot.tagCount;
+  if (tagDiff !== 0) lines.push(`Tag assignments: ${tagDiff > 0 ? "+" : ""}${tagDiff} (${startSnapshot.tagCount} → ${now.tagCount})`);
+  return lines;
+}
 
 export function resetDb(): void {
   if (db) { db.close(); db = null; }
@@ -34,7 +64,49 @@ export function getDb(): Database.Database {
   db.pragma("foreign_keys = ON");
 
   initSchema(db);
-  console.log(`[db] Ready in ${Date.now() - start}ms`);
+  startSnapshot = takeSnapshot(db);
+  console.log(`[db] Ready in ${Date.now() - start}ms (${startSnapshot.gameCount} games)`);
+
+  // Flush WAL + backup + close DB on process exit (Ctrl+C, kill, etc.)
+  const cleanup = () => {
+    if (db) {
+      try {
+        const delta = computeDelta(db);
+        db.pragma("wal_checkpoint(TRUNCATE)");
+        if (delta.length > 0) {
+          if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+          const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          const backupPath = path.join(BACKUP_DIR, `games_${ts}.db`);
+          fs.copyFileSync(DB_PATH, backupPath);
+          fs.writeFileSync(path.join(BACKUP_DIR, `games_${ts}.log`), delta.join("\n") + "\n");
+          // Keep only last N backups (configurable via settings.max_backups, default 5)
+          let maxBackups = 5;
+          try {
+            const row = db.prepare("SELECT value FROM settings WHERE key = 'max_backups'").get() as { value: string } | undefined;
+            if (row) maxBackups = Math.max(1, parseInt(row.value) || 5);
+          } catch {}
+          const backups = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("games_") && f.endsWith(".db")).sort();
+          while (backups.length > maxBackups) {
+            const old = backups.shift()!;
+            fs.unlinkSync(path.join(BACKUP_DIR, old));
+            const logFile = path.join(BACKUP_DIR, old.replace(".db", ".log"));
+            if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
+          }
+          console.log(`[db] Backup saved: ${path.basename(backupPath)}`);
+          delta.forEach(l => console.log(`[db]   ${l}`));
+        } else {
+          console.log("[db] No changes detected, skipping backup.");
+        }
+        db.close();
+        console.log("[db] WAL flushed and DB closed.");
+      } catch (e) { console.error("[db] Cleanup error:", e); }
+      db = null;
+    }
+  };
+  process.on("SIGINT", () => { cleanup(); process.exit(0); });
+  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+  process.on("exit", cleanup);
+
   return db;
 }
 
