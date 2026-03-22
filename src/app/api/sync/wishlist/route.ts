@@ -135,6 +135,8 @@ export async function POST() {
           if (!wishlistAppIds.has(g.steam_appid)) {
             // Tag with removed_from_wishlist subtag
             db.prepare("INSERT OR IGNORE INTO game_tags (game_id, tag_id, subtag_id) VALUES (?, ?, ?)").run(g.id, tagId, rmSubId);
+            // Remove the wishlist subtag so it doesn't get reported again next sync
+            db.prepare("DELETE FROM game_tags WHERE game_id = ? AND tag_id = ? AND subtag_id = ?").run(g.id, tagId, wishlistSubId);
             removed.push(g.name);
           }
         }
