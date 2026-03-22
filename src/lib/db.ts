@@ -39,36 +39,39 @@ function computeDelta(d: Database.Database): string[] {
 }
 
 /** Flush WAL + backup if changes detected. Returns { backed_up, delta, backup_file } */
-export /** Flush WAL + backup if changes detected. Returns { backed_up, delta, backup_file } */
-export function flushAndBackup(): { backed_up: boolean; delta: string[]; backup_file?: string } {
+export function flushAndBackup(opts?: { force?: boolean }): { backed_up: boolean; delta: string[]; backup_file?: string } {
   const d = getDb();
   const delta = computeDelta(d);
   d.pragma("wal_checkpoint(TRUNCATE)");
-  if (delta.length === 0) return { backed_up: false, delta };
+  const force = opts?.force ?? false;
+  if (!force && delta.length === 0) return { backed_up: false, delta };
   const ts = new Date(Date.now() + 5.5 * 3600000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const backupFolder = path.join(BACKUP_DIR, ts);
+  const baseDir = force ? path.join(BACKUP_DIR, "manual") : path.join(BACKUP_DIR, "auto");
+  const backupFolder = path.join(baseDir, ts);
   if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder, { recursive: true });
   // Copy DB
   fs.copyFileSync(DB_PATH, path.join(backupFolder, "games.db"));
   // Write delta log
-  fs.writeFileSync(path.join(backupFolder, "delta.log"), delta.join("\n") + "\n");
+  if (delta.length > 0) fs.writeFileSync(path.join(backupFolder, "delta.log"), delta.join("\n") + "\n");
   // Export TXT and CSV
   try {
     fs.writeFileSync(path.join(backupFolder, "games.txt"), generateTxt(d));
     fs.writeFileSync(path.join(backupFolder, "games.csv"), generateCsv(d));
   } catch (e) { console.error("[db] Export during backup failed:", e); }
-  // Keep only last N backups
+  // Keep only last N backups per folder
   let maxBackups = 5;
   try {
     const row = d.prepare("SELECT value FROM settings WHERE key = 'max_backups'").get() as { value: string } | undefined;
     if (row) maxBackups = Math.max(1, parseInt(row.value) || 5);
   } catch {}
-  const backups = fs.readdirSync(BACKUP_DIR).filter(f => {
-    try { return fs.statSync(path.join(BACKUP_DIR, f)).isDirectory(); } catch { return false; }
-  }).sort();
-  while (backups.length > maxBackups) {
-    const old = backups.shift()!;
-    fs.rmSync(path.join(BACKUP_DIR, old), { recursive: true, force: true });
+  if (fs.existsSync(baseDir)) {
+    const backups = fs.readdirSync(baseDir).filter(f => {
+      try { return fs.statSync(path.join(baseDir, f)).isDirectory(); } catch { return false; }
+    }).sort();
+    while (backups.length > maxBackups) {
+      const old = backups.shift()!;
+      fs.rmSync(path.join(baseDir, old), { recursive: true, force: true });
+    }
   }
   // Reset snapshot so next flush compares from this point
   startSnapshot = takeSnapshot(d);
