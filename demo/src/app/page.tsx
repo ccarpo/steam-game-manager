@@ -17,7 +17,7 @@ function loadPref<T>(key: string, fallback: T): T {
 export default function Home() {
   const { tags } = useTags();
   const { subtags } = useSubtags();
-  const { games, totalCount, loading, filters, setFilters } = useGames();
+  const { games, totalCount, loading, filters, setFilters, shuffleSeed, shuffle, clearShuffle } = useGames();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(256);
@@ -229,10 +229,15 @@ export default function Home() {
             <option value="name">Name</option><option value="tag">Tag</option><option value="genre">Genre</option>
             <option value="rating">Rating</option><option value="steamdb">SteamDB</option><option value="reviews">Reviews</option>
             <option value="metacritic">Metacritic</option><option value="sentiment">Sentiment</option>
-            <option value="release_date">Release</option><option value="added_at">Added</option>
+            <option value="release_date">Release</option><option value="wishlist_date">Wishlist Date</option><option value="added_at">Added</option>
           </select>
           <button onClick={() => { const d = filters.dir === "desc" ? "asc" : "desc"; const s = (filters.sorts || []).map(s => ({ ...s, dir: d as "asc" | "desc" })); setFilters({ ...filters, dir: d as "asc" | "desc", sorts: s.length > 0 ? s : undefined }); }}
             className="bg-background border border-border rounded px-2 py-1 text-xs text-muted hover:text-foreground">{filters.dir === "desc" ? "↓" : "↑"}</button>
+          <button
+            onClick={() => shuffleSeed !== null ? clearShuffle() : shuffle()}
+            className={`px-2 py-1 text-xs rounded border ${shuffleSeed !== null ? "bg-purple-500/20 border-purple-500 text-purple-400" : "bg-background border-border text-muted hover:text-foreground"}`}
+            title={shuffleSeed !== null ? "Shuffled — click to unshuffle" : "Shuffle / Randomize"}
+          >🎲</button>
           <div className="flex gap-0.5 bg-background rounded border border-border">
             <button onClick={() => setView("cards")} className={`px-2 py-1 text-xs rounded-l ${view === "cards" ? "bg-accent text-white" : "text-muted"}`}>▦</button>
             <button onClick={() => setView("table")} className={`px-2 py-1 text-xs rounded-r ${view === "table" ? "bg-accent text-white" : "text-muted"}`}>☰</button>

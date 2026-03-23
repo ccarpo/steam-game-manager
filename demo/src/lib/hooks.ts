@@ -145,6 +145,30 @@ function safeFirst(json: string | null | undefined): string {
   try { const arr = JSON.parse(json); return Array.isArray(arr) ? arr.join(", ").toLowerCase() : ""; } catch { return ""; }
 }
 
+function parseReleaseDate(s: string): number {
+  if (!s) return 0;
+  const low = s.toLowerCase().trim();
+  if (low === "coming soon" || low === "to be announced" || low === "tba") return 32503680000000;
+  const qm = low.match(/^q([1-4])\s+(\d{4})$/);
+  if (qm) return new Date(Number(qm[2]), (Number(qm[1]) - 1) * 3, 1).getTime();
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.getTime();
+  const m = s.match(/^(\d{1,2})\s+(\w+),?\s+(\d{4})$/);
+  if (m) { const d2 = new Date(`${m[2]} ${m[1]}, ${m[3]}`); if (!isNaN(d2.getTime())) return d2.getTime(); }
+  return 0;
+}
+
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const out = [...arr];
+  let s = seed;
+  for (let i = out.length - 1; i > 0; i--) {
+    s = (s * 16807 + 0) % 2147483647;
+    const j = s % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function sortGames(games: GameWithTags[], sort?: string, dir?: "asc" | "desc", sorts?: { key: string; dir: "asc" | "desc" }[]): GameWithTags[] {
   const entries = sorts && sorts.length > 0 ? sorts : sort ? [{ key: sort, dir: dir || "asc" as const }] : [{ key: "name", dir: dir || "asc" as const }];
   const sorted = [...games];
@@ -177,7 +201,12 @@ function compareBySortKey(a: GameWithTags, b: GameWithTags, sort: string, d: num
       return d * (av - bv);
     }
     case "release_date": {
-      const av = a.release_date || "", bv = b.release_date || "";
+      const av = parseReleaseDate(a.release_date || ""), bv = parseReleaseDate(b.release_date || "");
+      if (!av && !bv) return 0; if (!av) return 1; if (!bv) return -1;
+      return d * (av - bv);
+    }
+    case "wishlist_date": {
+      const av = a.wishlist_date || "", bv = b.wishlist_date || "";
       if (!av && !bv) return 0; if (!av) return 1; if (!bv) return -1;
       return d * av.localeCompare(bv);
     }
@@ -226,7 +255,10 @@ function compareBySortKey(a: GameWithTags, b: GameWithTags, sort: string, d: num
 export function useGames() {
   const [allGames, setAllGames] = useState<GameWithTags[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFiltersRaw] = useState<Filters>({});
+  const [shuffleSeed, setShuffleSeed] = useState<number | null>(null);
+
+  const setFilters = (f: Filters) => { setFiltersRaw(f); setShuffleSeed(null); };
 
   useEffect(() => {
     Promise.all([
@@ -254,6 +286,7 @@ export function useGames() {
 
   const games = useMemo(() => {
     const filtered = filterGames(allGames, filters);
+    if (shuffleSeed !== null) return seededShuffle(filtered, shuffleSeed);
     if (filters.search) {
       const scored = filtered.map((g) => ({ g, s: searchScore(g, filters.search!) }));
       scored.sort((a, b) => {
@@ -264,12 +297,14 @@ export function useGames() {
       return scored.map((x) => x.g);
     }
     return sortGames(filtered, filters.sort, filters.dir, filters.sorts);
-  }, [allGames, filters]);
+  }, [allGames, filters, shuffleSeed]);
 
   const totalCount = allGames.length;
   const allAppIds = useMemo(() => new Set(allGames.filter(g => g.steam_appid).map(g => g.steam_appid)), [allGames]);
+  const shuffle = () => setShuffleSeed(Date.now());
+  const clearShuffle = () => setShuffleSeed(null);
 
-  return { games, allGames, totalCount, loading, filters, setFilters, refresh: () => {}, allAppIds };
+  return { games, allGames, totalCount, loading, filters, setFilters, refresh: () => {}, allAppIds, shuffleSeed, shuffle, clearShuffle };
 }
 
 // --- Dynamic counts ---
