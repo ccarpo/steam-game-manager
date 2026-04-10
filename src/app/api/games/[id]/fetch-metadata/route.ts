@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { assignReleaseYearTag } from "@/lib/release-tag";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
@@ -157,6 +158,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       metacritic, JSON.stringify(screenshots), JSON.stringify(movies),
       totalSS, totalMov, id
     );
+
+    // Auto-assign release year tag
+    if (releaseDate) assignReleaseYearTag(db, Number(id), releaseDate);
 
     // Download images
     const headerImageUrl = detailData?.[String(appid)]?.success

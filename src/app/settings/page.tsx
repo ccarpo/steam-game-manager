@@ -399,6 +399,18 @@ export default function SettingsPage() {
             >🔗 Recalculate Similarities</button>
             <button
               onClick={async () => {
+                appendLog("Generating release year tags...");
+                try {
+                  const res = await fetch("/api/sync/release-tags", { method: "POST" });
+                  const data = await res.json();
+                  if (data.ok) appendLog(`Release tags: ${data.years} years, ${data.assigned} games tagged.`);
+                  else appendLog("Error: " + JSON.stringify(data));
+                } catch (err) { appendLog(`Error: ${err}`); }
+              }}
+              className="ml-2 px-3 py-1.5 rounded text-xs border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 transition-colors"
+            >📅 Release Year Tags</button>
+            <button
+              onClick={async () => {
                 appendLog("Flushing WAL & backing up...");
                 try {
                   const res = await fetch("/api/db/flush-wal", { method: "POST" });

@@ -848,7 +848,13 @@ function SteamResultRow({ result, tags, alreadyExists, adding, onAdd, onClickExi
       {alreadyExists ? (
         <span className="text-[10px] text-green-400">✓ in library</span>
       ) : (
-        <span className="text-[10px] text-accent">+ add</span>
+        <>
+          <button onClick={(e) => { e.stopPropagation(); onAdd(result); }}
+            disabled={adding}
+            className="text-[10px] px-2 py-0.5 rounded border border-accent/50 text-accent hover:bg-accent/10 disabled:opacity-50"
+          >+ Add</button>
+          <span className="text-[10px] text-muted cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowPreview(true); }}>👁</span>
+        </>
       )}
     </div>
     {showPreview && (
@@ -993,7 +999,20 @@ function FilterChips({ tags, subtags, filters, onChange, onClearSearch }: { tags
         includeFeatures: [], excludeFeatures: [], includeCommunityTags: [], excludeCommunityTags: [],
         includeDevelopers: [], excludeDevelopers: [], includePublishers: [], excludePublishers: [],
         untagged: false, withNotes: false, hideWishlistOnly: false, search: undefined,
-      }); onClearSearch?.(); }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
+      <button onClick={() => {
+        let def: Partial<Filters> = {};
+        try { const raw = localStorage.getItem("gm_default_filters"); if (raw) def = JSON.parse(raw); } catch {}
+        onChange({
+          ...filters, includeTags: [], excludeTags: def.excludeTags || [], includeSubtags: [], excludeSubtags: def.excludeSubtags || [],
+          includeGenres: [], excludeGenres: def.excludeGenres || [],
+          includeFeatures: [], excludeFeatures: def.excludeFeatures || [], includeCommunityTags: [], excludeCommunityTags: def.excludeCommunityTags || [],
+          includeDevelopers: [], excludeDevelopers: def.excludeDevelopers || [], includePublishers: [], excludePublishers: def.excludePublishers || [],
+          untagged: false, withNotes: false, hideWishlistOnly: def.hideWishlistOnly || false, search: undefined,
+        }); onClearSearch?.(); }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
+      <button onClick={() => {
+        const { search, sort, sorts, dir, ...rest } = filters;
+        localStorage.setItem("gm_default_filters", JSON.stringify(rest));
+      }} className="text-[10px] text-muted hover:text-foreground hover:underline ml-1" title="Save current excludes as default for Clear All">Set default</button>
     </div>
   );
 }
