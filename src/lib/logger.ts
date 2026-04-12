@@ -1,4 +1,6 @@
 import { getDb } from "./db";
+import { pushLog, getLogBuffer, clearLogBuffer } from "./log-buffer";
+export type { LogEntry } from "./log-buffer";
 
 export type LogLevel = "off" | "error" | "info" | "debug";
 
@@ -6,8 +8,9 @@ const LEVELS: Record<LogLevel, number> = { off: 0, error: 1, info: 2, debug: 3 }
 
 let cached: { level: LogLevel; ts: number } | null = null;
 
+export { getLogBuffer, clearLogBuffer };
+
 export function getLogLevel(): LogLevel {
-  // Cache for 10s to avoid hitting DB on every log call
   if (cached && Date.now() - cached.ts < 10000) return cached.level;
   try {
     const db = getDb();
@@ -25,7 +28,9 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 export const log = {
-  error: (...args: unknown[]) => { if (shouldLog("error")) console.error("[ERROR]", ...args); },
-  info: (...args: unknown[]) => { if (shouldLog("info")) console.log("[INFO]", ...args); },
-  debug: (...args: unknown[]) => { if (shouldLog("debug")) console.log("[DEBUG]", ...args); },
+  error: (...args: unknown[]) => { const msg = args.map(String).join(" "); pushLog("ERROR", msg); if (shouldLog("error")) console.error("[ERROR]", ...args); },
+  info: (...args: unknown[]) => { const msg = args.map(String).join(" "); pushLog("INFO", msg); if (shouldLog("info")) console.log("[INFO]", ...args); },
+  debug: (...args: unknown[]) => { const msg = args.map(String).join(" "); if (shouldLog("debug")) { pushLog("DEBUG", msg); console.log("[DEBUG]", ...args); } },
+  /** Always captured to buffer regardless of log level — for migrations, startup, etc. */
+  system: (...args: unknown[]) => { const msg = args.map(String).join(" "); pushLog("SYSTEM", msg); console.log("[SYSTEM]", ...args); },
 };

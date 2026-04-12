@@ -442,6 +442,9 @@ export default function SettingsPage() {
             </label>
           </div>
 
+          {/* System Log */}
+          <SystemLog />
+
           {/* Tag & Subtag Management */}
           <TagManager />
         </div>
@@ -663,6 +666,49 @@ function CsvColumnsConfig({ settings, onUpdate }: { settings: Record<string, str
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SystemLog() {
+  const [logs, setLogs] = useState<{ ts: string; level: string; msg: string }[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  const refresh = useCallback(() => {
+    fetch("/api/logs").then(r => r.json()).then(setLogs).catch(() => {});
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const levelColor: Record<string, string> = {
+    ERROR: "text-red-400", SYSTEM: "text-cyan-400", INFO: "text-blue-400", DEBUG: "text-gray-500",
+  };
+
+  return (
+    <div className="bg-surface rounded-lg p-4 border border-border">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold cursor-pointer" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "▾" : "▸"} System Log ({logs.length})
+        </h2>
+        <div className="flex gap-2">
+          <button onClick={refresh} className="text-[10px] text-muted hover:text-foreground">↻ Refresh</button>
+          <button onClick={() => { fetch("/api/logs", { method: "DELETE" }).then(refresh); }}
+            className="text-[10px] text-danger hover:underline">Clear</button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="bg-background rounded border border-border p-2 max-h-64 overflow-y-auto font-mono text-[11px] space-y-0.5">
+          {logs.length === 0 ? (
+            <div className="text-muted text-center py-4">No log entries</div>
+          ) : logs.map((l, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="text-muted shrink-0">{l.ts}</span>
+              <span className={`shrink-0 w-12 ${levelColor[l.level] || "text-muted"}`}>{l.level}</span>
+              <span className="text-foreground break-all">{l.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

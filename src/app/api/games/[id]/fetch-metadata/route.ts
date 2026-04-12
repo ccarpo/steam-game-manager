@@ -106,8 +106,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       description = (d.short_description as string) || "";
       genres = ((d.genres as { description: string }[]) || []).map((g) => g.description);
       features = ((d.categories as { description: string }[]) || []).map((c) => c.description);
-      developers = ((d.developers as string[]) || []).join(", ");
-      publishers = ((d.publishers as string[]) || []).join(", ");
+      developers = JSON.stringify((d.developers as string[]) || []);
+      publishers = JSON.stringify((d.publishers as string[]) || []);
       const rd = d.release_date as { date?: string } | undefined;
       releaseDate = rd?.date || "";
       const mc = d.metacritic as { score?: number } | undefined;

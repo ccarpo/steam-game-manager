@@ -380,8 +380,8 @@ function rebuildFromCache(
           desc = (d.short_description as string) || "";
           genres = ((d.genres as { description: string }[]) || []).map((x) => x.description);
           feats = ((d.categories as { description: string }[]) || []).map((x) => x.description);
-          devs = ((d.developers as string[]) || []).join(", ");
-          pubs = ((d.publishers as string[]) || []).join(", ");
+          devs = JSON.stringify((d.developers as string[]) || []);
+          pubs = JSON.stringify((d.publishers as string[]) || []);
           relDate = (d.release_date as { date?: string })?.date || "";
           mc = (d.metacritic as { score?: number })?.score || 0;
           const allSS = (d.screenshots as { path_full: string }[]) || [];

@@ -113,6 +113,14 @@ function safeJsonParse(str: string | null | undefined): string[] {
   try { const p = JSON.parse(str); return Array.isArray(p) ? p : []; } catch { return []; }
 }
 
+/** Parse developer/publisher field — handles both JSON arrays and legacy comma-separated */
+function splitCompanies(s: string): string[] {
+  if (!s) return [];
+  if (s.startsWith("[")) return safeJsonParse(s);
+  const protected_ = s.replace(/\b(Co|Inc|Ltd|Corp|S\.A|S\.L|LLC|GmbH)\.\s*,/gi, (_m, p1) => `${p1}.†`);
+  return protected_.split(",").map(s => s.replace(/†/g, ",").trim()).filter(Boolean);
+}
+
 // --- Dynamic counts ---
 export function computeDynamicCounts(games: GameWithTags[]) {
   const genreCounts = new Map<string, number>();
@@ -128,11 +136,11 @@ export function computeDynamicCounts(games: GameWithTags[]) {
     for (const f of safeJsonParse(game.steam_features)) featureCounts.set(f, (featureCounts.get(f) || 0) + 1);
     for (const t of safeJsonParse(game.community_tags)) communityTagCounts.set(t, (communityTagCounts.get(t) || 0) + 1);
     if (game.developers) {
-      for (const d of game.developers.split(",").map((s: string) => s.trim()).filter(Boolean))
+      for (const d of splitCompanies(game.developers))
         developerCounts.set(d, (developerCounts.get(d) || 0) + 1);
     }
     if (game.publishers) {
-      for (const p of game.publishers.split(",").map((s: string) => s.trim()).filter(Boolean))
+      for (const p of splitCompanies(game.publishers))
         publisherCounts.set(p, (publisherCounts.get(p) || 0) + 1);
     }
     if (game.tags) {
@@ -228,8 +236,8 @@ function filterGames(allGames: GameWithTags[], filters: Filters): GameWithTags[]
     if (excludeFeatures.some((f) => features.includes(f))) return false;
     if (excludeCommunityTags.some((t) => ctags.includes(t))) return false;
 
-    const devs = game.developers ? game.developers.split(",").map((s: string) => s.trim()) : [];
-    const pubs = game.publishers ? game.publishers.split(",").map((s: string) => s.trim()) : [];
+    const devs = game.developers ? splitCompanies(game.developers) : [];
+    const pubs = game.publishers ? splitCompanies(game.publishers) : [];
     if (excludeDevelopers.some((d) => devs.includes(d))) return false;
     if (excludePublishers.some((p) => pubs.includes(p))) return false;
 

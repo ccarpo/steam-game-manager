@@ -28,8 +28,16 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
   const [notes, setNotes] = useState(game.notes || "");
   const [steamAppid, setSteamAppid] = useState(game.steam_appid?.toString() || "");
   const [description, setDescription] = useState(game.description || "");
-  const [developers, setDevelopers] = useState(game.developers || "");
-  const [publishers, setPublishers] = useState(game.publishers || "");
+  const [developers, setDevelopers] = useState(() => {
+    const d = game.developers || "";
+    if (d.startsWith("[")) { try { return JSON.parse(d).join(", "); } catch {} }
+    return d;
+  });
+  const [publishers, setPublishers] = useState(() => {
+    const p = game.publishers || "";
+    if (p.startsWith("[")) { try { return JSON.parse(p).join(", "); } catch {} }
+    return p;
+  });
   const [releaseDate, setReleaseDate] = useState(game.release_date || "");
   const [addedAt, setAddedAt] = useState(game.added_at || "");
   const [genres, setGenres] = useState(() => { try { return JSON.parse(game.steam_genres || "[]").join(", "); } catch { return ""; } });

@@ -2,6 +2,10 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { generateTxt, generateCsv } from "./export";
+import { pushLog } from "./log-buffer";
+
+/** Log to both console and UI buffer */
+function dbLog(msg: string) { pushLog("SYSTEM", msg); console.log(`[db] ${msg}`); }
 
 const DB_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "games.db");
@@ -122,14 +126,14 @@ export function getDb(): Database.Database {
   acquireLock();
 
   const start = Date.now();
-  console.log("[db] Initializing database...");
+  dbLog("Initializing database...");
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
 
   initSchema(db);
   startSnapshot = takeSnapshot(db);
-  console.log(`[db] Ready in ${Date.now() - start}ms (${startSnapshot.gameCount} games)`);
+  dbLog(`Ready in ${Date.now() - start}ms (${startSnapshot.gameCount} games)`);
 
   // Flush WAL + backup + close DB on process exit (Ctrl+C, kill, etc.)
   const cleanup = () => {
@@ -138,7 +142,7 @@ export function getDb(): Database.Database {
         flushAndBackup();
         db.close();
         releaseLock();
-        console.log("[db] WAL flushed and DB closed.");
+        dbLog("WAL flushed and DB closed.");
       } catch (e) { console.error("[db] Cleanup error:", e); }
       db = null;
     }
@@ -245,6 +249,42 @@ function initSchema(db: Database.Database) {
 
   // Startup: sync total_screenshots/total_movies from disk
   syncAssetCounts(db);
+
+  // Migration: convert developers/publishers from comma-separated to JSON arrays
+  migrateDevPubToJson(db);
+}
+
+function migrateDevPubToJson(db: Database.Database) {
+  const sample = db.prepare("SELECT developers FROM games WHERE developers != '' AND developers IS NOT NULL LIMIT 1").get() as { developers: string } | undefined;
+  if (!sample || sample.developers.startsWith("[")) return;
+
+  dbLog("Migrating developers/publishers to JSON arrays...");
+
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='steam_cache'").get();
+  if (!tables) { dbLog("No steam_cache table, skipping migration."); return; }
+
+  const games = db.prepare("SELECT id, steam_appid FROM games WHERE steam_appid IS NOT NULL").all() as { id: number; steam_appid: number }[];
+  const getCache = db.prepare("SELECT appdetails FROM steam_cache WHERE appid = ?");
+  const update = db.prepare("UPDATE games SET developers = ?, publishers = ? WHERE id = ?");
+
+  let migrated = 0;
+  const tx = db.transaction(() => {
+    for (const g of games) {
+      const cached = getCache.get(g.steam_appid) as { appdetails: string } | undefined;
+      if (!cached) continue;
+      try {
+        const det = JSON.parse(cached.appdetails) as Record<string, { success: boolean; data?: { developers?: string[]; publishers?: string[] } }>;
+        const data = det?.[String(g.steam_appid)]?.data;
+        if (!data) continue;
+        const devs = JSON.stringify(data.developers || []);
+        const pubs = JSON.stringify(data.publishers || []);
+        update.run(devs, pubs, g.id);
+        migrated++;
+      } catch { /* skip */ }
+    }
+  });
+  tx();
+  dbLog(`Migrated ${migrated}/${games.length} games to JSON arrays.`);
 }
 
 /** Ensure "steam" L0 tag with subtags: wishlist, removed_from_wishlist, owned, ignored, played_elsewhere */
@@ -269,6 +309,10 @@ function syncAssetCounts(db: Database.Database) {
   const ASSETS_DIR = path.join(process.cwd(), "data", "assets", "games");
   if (!fs.existsSync(ASSETS_DIR)) return;
 
+  // Skip if counts are already populated (not a fresh DB) — run manually via Settings > Re-init DB
+  const hasAny = db.prepare("SELECT 1 FROM games WHERE total_screenshots > 0 OR total_movies > 0 LIMIT 1").get();
+  if (hasAny) { dbLog("Asset counts already populated, skipping scan."); return; }
+
   const games = db.prepare("SELECT id, steam_appid FROM games").all() as { id: number; steam_appid: number | null }[];
   const update = db.prepare("UPDATE games SET total_screenshots = ?, total_movies = ? WHERE id = ? AND (total_screenshots != ? OR total_movies != ?)");
 
@@ -286,7 +330,7 @@ function syncAssetCounts(db: Database.Database) {
   });
   tx();
   const scanned = games.filter(g => fs.existsSync(path.join(ASSETS_DIR, String(g.steam_appid || `manual_${g.id}`)))).length;
-  console.log(`[db] Asset scan: ${scanned} games checked, ${changed} updated`);
+  dbLog(`Asset scan: ${scanned} games checked, ${changed} updated`);
 }
 
 /** Read Steam API key and Steam ID from the settings table */

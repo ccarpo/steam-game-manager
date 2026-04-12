@@ -112,8 +112,8 @@ function colVal(row: GameRow, col: string): string {
     case "genres": return esc(row.genres);
     case "meta": return esc(row.meta);
     case "description": return esc(row.description);
-    case "developers": return esc(row.developers);
-    case "publishers": return esc(row.publishers);
+    case "developers": { const d = row.developers; return esc(d?.startsWith("[") ? JSON.parse(d).join(", ") : d); }
+    case "publishers": { const p = row.publishers; return esc(p?.startsWith("[") ? JSON.parse(p).join(", ") : p); }
     case "release_date": return esc(row.release_date);
     case "review_sentiment": return esc(row.review_sentiment);
     case "positive_percent": return row.positive_percent ? String(row.positive_percent) : "";
