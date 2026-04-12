@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/games/:id
@@ -74,6 +75,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     )
     .all(id);
 
+  const updatedFields = Object.keys(body).filter(k => k !== "tags").join(", ");
+  audit("UPDATE_GAME", `id=${id} fields=[${updatedFields}]${Array.isArray(tags) ? ` tags=${tags.length}` : ""}`);
+
   return NextResponse.json({ ...(game as object), tags: gameTags });
 }
 
@@ -81,6 +85,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
+  const g = db.prepare("SELECT name FROM games WHERE id = ?").get(id) as { name: string } | undefined;
   db.prepare("DELETE FROM games WHERE id = ?").run(id);
+  audit("DELETE_GAME", `${g?.name || "?"} [id=${id}]`);
   return NextResponse.json({ ok: true });
 }

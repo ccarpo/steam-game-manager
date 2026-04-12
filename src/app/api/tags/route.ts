@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/tags — list all tags with game counts
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
       .prepare("INSERT INTO tags (name, color) VALUES (?, ?)")
       .run(name.trim(), color || "#6366f1");
     const tag = db.prepare("SELECT * FROM tags WHERE id = ?").get(result.lastInsertRowid);
+    audit("ADD_TAG", `${name.trim()}`);
     return NextResponse.json(tag, { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";

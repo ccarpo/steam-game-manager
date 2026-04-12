@@ -151,6 +151,14 @@ export function getDb(): Database.Database {
   process.on("SIGTERM", () => { cleanup(); process.exit(0); });
   process.on("exit", cleanup);
 
+  // Periodic WAL flush every 5 minutes (covers Windows where SIGINT may not fire)
+  const flushInterval = setInterval(() => {
+    if (db) {
+      try { db.pragma("wal_checkpoint(PASSIVE)"); } catch {}
+    }
+  }, 5 * 60 * 1000);
+  flushInterval.unref();
+
   return db;
 }
 

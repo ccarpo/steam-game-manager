@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 
 // PUT /api/tags/:id — update a tag
@@ -12,6 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     id
   );
   const tag = db.prepare("SELECT * FROM tags WHERE id = ?").get(id);
+  audit("UPDATE_TAG", `id=${id} name=${name || "?"}`);
   return NextResponse.json(tag);
 }
 
@@ -19,6 +21,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
+  const t = db.prepare("SELECT name FROM tags WHERE id = ?").get(id) as { name: string } | undefined;
   db.prepare("DELETE FROM tags WHERE id = ?").run(id);
+  audit("DELETE_TAG", `${t?.name || "?"} [id=${id}]`);
   return NextResponse.json({ ok: true });
 }

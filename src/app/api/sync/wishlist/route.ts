@@ -1,4 +1,5 @@
 import { getDb, ensureSteamTag, getSteamCredentials } from "@/lib/db";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -140,6 +141,8 @@ export async function POST() {
             removed.push(g.name);
           }
         }
+
+        audit("SYNC_WISHLIST", `added=${added} existing=${existing} removed=${removed.length}`);
 
         send({
           type: "done",

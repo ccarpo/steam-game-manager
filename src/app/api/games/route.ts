@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { audit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { mkdirSync, existsSync } from "fs";
 import path from "path";
@@ -210,6 +211,8 @@ export async function POST(req: NextRequest) {
   });
 
   transaction();
+
+  for (const r of results) audit("ADD_GAME", `${r.name} [id=${r.id}]`);
 
   return NextResponse.json(
     { added: results.length, games: results },
