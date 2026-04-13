@@ -43,7 +43,9 @@ Then use the sync buttons to pull your library.
 - **Card view** — Grid of game cards with header images, tags, genres, community tags, and score badges. Adjustable column count via slider (2–8 columns). Hover slideshow cycles through screenshots.
 - **List view** — Spreadsheet-style table with 20+ columns. Fully customizable: show/hide columns, drag to reorder, resize widths, multi-column sort (shift-click). Sticky header row. Adjustable row height with image scaling.
 - **Inspector** — Click any game to open a detailed two-panel inspector. Left side shows header image and a media grid of all screenshots and videos. Right side shows description, metadata grid (score, reviews, Metacritic, SteamDB score, sentiment, dates, developer, publisher), and a 2×2 tag panel (your tags, genres, community tags, features). Fully resizable panels with drag handles. Layout persists across sessions. Clicking any screenshot or video in the media grid opens a full-screen lightbox with arrow-key navigation, auto-playing videos with configurable delay, and HLS streaming support.
-- **Keyboard navigation** — Arrow keys to move through games, Enter/Space to open inspector, Escape to close. Works in both card and list views.
+- **Similar games** — Inspector shows similar games as clickable purple pills, based on shared genres, tags, and community tags. Similarity scores are pre-computed and can be recalculated from Settings. Clicking a similar game opens a stacked inspector.
+- **Shuffle / Randomize** — 🎲 button in the top bar randomizes the game list using a seeded Fisher-Yates shuffle. Click again to unshuffle. Changing filters or sort automatically clears the shuffle.
+- **Keyboard navigation** — Arrow keys to move through games, Enter/Space to open inspector, Escape to close (priority chain: edit modal → similar stack → inspector → selected → search). Works in both card and list views.
 
 ### Tags & Organization
 
@@ -51,6 +53,7 @@ Then use the sync buttons to pull your library.
 - **Tag management** — Full CRUD in Settings. Create, rename, recolor, delete tags and subtags. Subtags can be genre-type or meta-type.
 - **Quick tagging** — Click any tag/genre/feature pill in any view to filter by it. Right-click to exclude. Works everywhere: cards, list rows, inspector, sidebar.
 - **Steam auto-tags** — Synced games automatically get a "steam" tag with subtags: wishlist, owned, removed_from_wishlist, ignored, played_elsewhere.
+- **Release year tags** — Auto-generates a "release" tag with year subtags (2014, 2025, TBA, etc.) parsed from Steam release dates. Handles exact dates, "Q3 2026", "Coming soon", and "To be announced". Runs automatically on metadata fetch, or manually via Settings.
 
 ### Filtering & Search
 
@@ -60,8 +63,9 @@ Then use the sync buttons to pull your library.
   - Developers and publishers (include/exclude)
   - Quick filters: untagged games, games with notes, curated-only mode
   - Active filter count badge and one-click clear
-- **Fuzzy search** — Search bar matches against game names, genres, tags, community tags, developers, and publishers. Results ranked by relevance.
-- **Steam search** — When searching, also queries Steam's store API to find and add new games directly from search results.
+- **Fuzzy search** — Search bar matches against game names with tiered ranking (starts-with → contains → fuzzy). Supports prefix searches: `note:keyword`, `dev:studio`, `appid:12345`.
+- **Steam search** — When searching, also queries Steam's store API to find and add new games. Direct "Add" button on each result skips the preview and opens the edit modal immediately. Preview button (👁) available for checking before adding.
+- **Filter chips** — Active filters shown as removable chips at the top. "Clear all" resets to configurable defaults (set your preferred excludes as default via "Set default" button). Smooth scroll-to-top on filter change.
 - **Multi-sort** — Sort by any column. Shift-click column headers to add secondary/tertiary sort levels.
 
 ### Scores & Color Coding
@@ -76,8 +80,8 @@ Then use the sync buttons to pull your library.
 - **TXT export** — Simple name list export.
 - **CSV import** — Import games from CSV. Matches existing games by Steam AppID, creates new entries, and links tags.
 - **Manual game entry** — Add games without a Steam AppID. Manually upload screenshots via folder scan.
-- **Edit modal** — Edit any game's name, notes, AppID, and tag assignments.
-- **Per-game metadata refresh** — Re-fetch metadata for individual games from the inspector.
+- **Edit modal** — Edit any game's name, notes, AppID, tags, developers, publishers, genres, and release date. Resizable. Opens instantly for newly added Steam games while metadata fetches in the background — saving tags won't overwrite metadata that arrived after the modal opened.
+- **Per-game metadata refresh** — Re-fetch metadata for individual games from the inspector. Updates name if Steam has a different one.
 
 ### Clipboard Matching
 
@@ -95,6 +99,16 @@ Then use the sync buttons to pull your library.
 - **Log level** — Server-side logging verbosity for sync operations (off/error/info/debug).
 - **LAN access** — Shows your local network IP for accessing the app from other devices on the same network.
 - **Database re-init** — Re-run migrations and asset count sync without losing data.
+- **System log** — Collapsible log viewer in Settings showing DB initialization, migration results, sync events, and errors. Ring buffer of last 200 entries with color-coded levels.
+
+### Data Safety & Recovery
+
+- **Auto-backup on exit** — When the dev server stops cleanly, if any data changed during the session, a timestamped backup is saved to `data/backups/` with a delta log showing what changed (games added/removed, tag assignments).
+- **Configurable backup retention** — Set max number of backups to keep (default 5, configurable in Settings).
+- **Periodic WAL flush** — WAL is flushed every 5 minutes while running, so even a hard kill or Windows Ctrl+C leaves a consistent database.
+- **WAL flush on exit** — Clean shutdown flushes WAL and closes the DB properly.
+- **Manual flush** — "Flush WAL" button in Settings for on-demand checkpoint.
+- **Audit log** — Every write operation (add/update/delete games, tags, syncs) is logged to `data/audit.log` with timestamps, game names, Steam AppIDs, and before→after values for changed fields.
 
 ---
 
@@ -111,6 +125,8 @@ All data lives locally:
 
 - `data/games.db` — SQLite database (auto-created on first run)
 - `data/assets/games/<appid>/` — Cached images per game (header, screenshots, movie thumbnails)
+- `data/backups/` — Timestamped DB backups with change logs (auto-created on exit if data changed)
+- `data/audit.log` — Append-only log of all write operations
 
 The `data/` directory is gitignored. Your database and images stay on your machine.
 
