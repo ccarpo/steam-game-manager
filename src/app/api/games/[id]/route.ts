@@ -29,6 +29,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { name, notes, tags } = body;
   const db = getDb();
 
+  // Snapshot before update for audit
+  const before = db.prepare("SELECT * FROM games WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  const beforeTags = db.prepare("SELECT t.name as tag, s.name as sub FROM game_tags gt JOIN tags t ON t.id=gt.tag_id LEFT JOIN subtags s ON s.id=gt.subtag_id WHERE gt.game_id=?").all(id) as { tag: string; sub: string | null }[];
+
   // Check for duplicate steam_appid
   if ("steam_appid" in body && body.steam_appid) {
     const existing = db.prepare("SELECT id, name FROM games WHERE steam_appid = ? AND id != ?").get(body.steam_appid, id) as { id: number; name: string } | undefined;
@@ -75,8 +79,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     )
     .all(id);
 
-  const updatedFields = Object.keys(body).filter(k => k !== "tags").join(", ");
-  audit("UPDATE_GAME", `id=${id} fields=[${updatedFields}]${Array.isArray(tags) ? ` tags=${tags.length}` : ""}`);
+  // Audit: log what changed with before/after values
+  const gameName = (game as Record<string, unknown>)?.name || before?.name || "?";
+  const appid = (game as Record<string, unknown>)?.steam_appid || before?.steam_appid || "";
+  const changes: string[] = [];
+  for (const key of Object.keys(body).filter(k => k !== "tags")) {
+    const oldVal = before?.[key] ?? "";
+    const newVal = body[key] ?? "";
+    const o = typeof oldVal === "string" && oldVal.length > 80 ? oldVal.slice(0, 80) + "…" : String(oldVal);
+    const n = typeof newVal === "string" && newVal.length > 80 ? newVal.slice(0, 80) + "…" : String(newVal);
+    if (String(oldVal) !== String(newVal)) changes.push(`${key}: "${o}" → "${n}"`);
+  }
+  if (Array.isArray(tags)) {
+    const oldT = beforeTags.map(t => t.sub ? `${t.tag}>${t.sub}` : t.tag).join(", ");
+    const afterTags = db.prepare("SELECT t.name as tag, s.name as sub FROM game_tags gt JOIN tags t ON t.id=gt.tag_id LEFT JOIN subtags s ON s.id=gt.subtag_id WHERE gt.game_id=?").all(id) as { tag: string; sub: string | null }[];
+    const newT = afterTags.map(t => t.sub ? `${t.tag}>${t.sub}` : t.tag).join(", ");
+    if (oldT !== newT) changes.push(`tags: [${oldT}] → [${newT}]`);
+  }
+  if (changes.length > 0) audit("UPDATE_GAME", `"${gameName}" [id=${id} appid=${appid}] ${changes.join(" | ")}`);
 
   return NextResponse.json({ ...(game as object), tags: gameTags });
 }
@@ -85,8 +105,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const g = db.prepare("SELECT name FROM games WHERE id = ?").get(id) as { name: string } | undefined;
+  const g = db.prepare("SELECT name, steam_appid FROM games WHERE id = ?").get(id) as { name: string; steam_appid: number | null } | undefined;
   db.prepare("DELETE FROM games WHERE id = ?").run(id);
-  audit("DELETE_GAME", `${g?.name || "?"} [id=${id}]`);
+  audit("DELETE_GAME", `"${g?.name || "?"}" [id=${id} appid=${g?.steam_appid || "none"}]`);
   return NextResponse.json({ ok: true });
 }

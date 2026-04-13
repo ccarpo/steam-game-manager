@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
 
   transaction();
 
-  for (const r of results) audit("ADD_GAME", `${r.name} [id=${r.id}]`);
+  for (const r of results) audit("ADD_GAME", `"${r.name}" [id=${r.id}]${items.find(i => i.name?.trim() === r.name)?.steam_appid ? ` appid=${items.find(i => i.name?.trim() === r.name)!.steam_appid}` : ""}`);
 
   return NextResponse.json(
     { added: results.length, games: results },

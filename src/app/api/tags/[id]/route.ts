@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     id
   );
   const tag = db.prepare("SELECT * FROM tags WHERE id = ?").get(id);
-  audit("UPDATE_TAG", `id=${id} name=${name || "?"}`);
+  audit("UPDATE_TAG", `"${name || (tag as Record<string,unknown>)?.name || "?"}" [id=${id}] color=${color || "unchanged"}`);
   return NextResponse.json(tag);
 }
 

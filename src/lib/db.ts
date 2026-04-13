@@ -82,27 +82,6 @@ export function flushAndBackup(opts?: { force?: boolean }): { backed_up: boolean
   return { backed_up: true, delta, backup_file: ts };
 }
 
-const LOCK_PATH = path.join(DB_DIR, "games.lock");
-
-function acquireLock() {
-  const pid = process.pid;
-  if (fs.existsSync(LOCK_PATH)) {
-    const existing = parseInt(fs.readFileSync(LOCK_PATH, "utf-8").trim(), 10);
-    let alive = false;
-    try { process.kill(existing, 0); alive = true; } catch {}
-    if (alive) {
-      console.error(`[db] ERROR: Another instance is already running (PID ${existing}). Exiting.`);
-      process.exit(1);
-    }
-    console.warn(`[db] Stale lockfile found (PID ${existing} is dead), removing.`);
-  }
-  fs.writeFileSync(LOCK_PATH, String(pid));
-}
-
-function releaseLock() {
-  try { if (fs.existsSync(LOCK_PATH)) fs.unlinkSync(LOCK_PATH); } catch {}
-}
-
 export function resetDb(): void {
   if (db) { db.close(); db = null; }
   for (const suffix of ["", "-wal", "-shm"]) {
@@ -113,7 +92,7 @@ export function resetDb(): void {
 
 export function reinitDb(): void {
   if (db) { db.close(); db = null; }
-  getDb(); // re-opens and re-runs initSchema (column migrations + asset sync)
+  getDb();
 }
 
 export function getDb(): Database.Database {
@@ -122,8 +101,6 @@ export function getDb(): Database.Database {
   if (!fs.existsSync(DB_DIR)) {
     fs.mkdirSync(DB_DIR, { recursive: true });
   }
-
-  acquireLock();
 
   const start = Date.now();
   dbLog("Initializing database...");
@@ -141,7 +118,6 @@ export function getDb(): Database.Database {
       try {
         flushAndBackup();
         db.close();
-        releaseLock();
         dbLog("WAL flushed and DB closed.");
       } catch (e) { console.error("[db] Cleanup error:", e); }
       db = null;
