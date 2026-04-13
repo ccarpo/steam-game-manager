@@ -244,6 +244,11 @@ export default function Sidebar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fGenres, fComm, steamSort, filters.includeGenres, filters.excludeGenres, filters.includeCommunityTags, filters.excludeCommunityTags]);
 
+  const allTagsExpanded = sortedTags.length > 0 && sortedTags.every((t) => expandedTagIds.has(t.id) || !(subsByTag.get(t.id)?.length));
+  const toggleExpandAll = useCallback(() => {
+    setExpandedTagIds(allTagsExpanded ? new Set() : new Set(sortedTags.filter((t) => (subsByTag.get(t.id)?.length || 0) > 0).map((t) => t.id)));
+  }, [allTagsExpanded, sortedTags, subsByTag]);
+
   if (collapsed) {
     return (
       <div className="w-10 bg-surface border-r border-border flex flex-col items-center py-3 shrink-0">
@@ -322,11 +327,6 @@ export default function Sidebar({
       })()}
     </div>
   );
-
-  const allTagsExpanded = sortedTags.length > 0 && sortedTags.every((t) => expandedTagIds.has(t.id) || !(subsByTag.get(t.id)?.length));
-  const toggleExpandAll = useCallback(() => {
-    setExpandedTagIds(allTagsExpanded ? new Set() : new Set(sortedTags.filter((t) => (subsByTag.get(t.id)?.length || 0) > 0).map((t) => t.id)));
-  }, [allTagsExpanded, sortedTags, subsByTag]);
 
   // ─── Custom tags panel (shared between both layouts) ───
   const customTagsContent = (
