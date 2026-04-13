@@ -593,9 +593,10 @@ export default function Home() {
           >{filters.dir === "desc" ? "↓" : "↑"}</button>
 
           <button
-            onClick={() => shuffleSeed !== null ? clearShuffle() : shuffle()}
+            onClick={() => shuffle()}
+            onContextMenu={(e) => { e.preventDefault(); clearShuffle(); }}
             className={`px-2 py-1 text-xs rounded border ${shuffleSeed !== null ? "bg-purple-500/20 border-purple-500 text-purple-400" : "bg-background border-border text-muted hover:text-foreground"}`}
-            title={shuffleSeed !== null ? "Shuffled — click to unshuffle" : "Shuffle / Randomize"}
+            title="Click: shuffle — Right-click: unshuffle"
           >🎲</button>
 
           <div className="flex gap-0.5 bg-background rounded border border-border">

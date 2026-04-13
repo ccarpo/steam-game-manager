@@ -411,6 +411,38 @@ export default function SettingsPage() {
             >📅 Release Year Tags</button>
             <button
               onClick={async () => {
+                appendLog("Refreshing TBA/upcoming release dates...");
+                setSyncRunning("tba");
+                try {
+                  const res = await fetch("/api/sync/refresh-tba", { method: "POST" });
+                  const reader = res.body?.getReader();
+                  if (!reader) return;
+                  const decoder = new TextDecoder();
+                  let buf = "";
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split("\n\n");
+                    buf = lines.pop() || "";
+                    for (const line of lines) {
+                      const m = line.match(/^data: (.+)/);
+                      if (!m) continue;
+                      const d = JSON.parse(m[1]);
+                      if (d.type === "progress") appendLog(`  ${d.name}: "${d.oldDate}" → "${d.newDate}"`);
+                      else if (d.type === "done") appendLog(d.message);
+                      else if (d.type === "status") appendLog(d.message);
+                      else if (d.type === "error") appendLog(`Error: ${d.message}`);
+                    }
+                  }
+                } catch (err) { appendLog(`Error: ${err}`); }
+                setSyncRunning(null);
+              }}
+              disabled={!!syncRunning}
+              className="ml-2 px-3 py-1.5 rounded text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 transition-colors disabled:opacity-50"
+            >🔄 Refresh TBA</button>
+            <button
+              onClick={async () => {
                 appendLog("Flushing WAL & backing up...");
                 try {
                   const res = await fetch("/api/db/flush-wal", { method: "POST" });
