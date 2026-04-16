@@ -142,7 +142,7 @@ export function generateCsv(db: Database.Database): string {
            g.review_sentiment, g.positive_percent, g.total_reviews, g.metacritic_score,
            g.steam_genres, g.steam_features, g.community_tags,
            g.wishlist_date, g.steam_image_url,
-           g.user_rating, g.queue_position, g.rec_score,
+           g.user_rating, g.queue_position,
            t.name as tag_name,
            GROUP_CONCAT(CASE WHEN s.type = 'genre' THEN s.name END, '|') as genres,
            GROUP_CONCAT(CASE WHEN s.type = 'meta' THEN s.name END, '|') as meta

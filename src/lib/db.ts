@@ -61,7 +61,7 @@ export function flushAndBackup(opts?: { force?: boolean }): { backed_up: boolean
   try {
     fs.writeFileSync(path.join(backupFolder, "games.txt"), generateTxt(d));
     fs.writeFileSync(path.join(backupFolder, "games.csv"), generateCsv(d));
-  } catch (e) { console.error("[db] Export during backup failed:", e); }
+  } catch (e) { dbLog(`Export during backup failed: ${e}`); }
   // Keep only last N backups per folder
   let maxBackups = 5;
   try {
@@ -119,7 +119,7 @@ export function getDb(): Database.Database {
         flushAndBackup();
         db.close();
         dbLog("WAL flushed and DB closed.");
-      } catch (e) { console.error("[db] Cleanup error:", e); }
+      } catch (e) { dbLog(`Cleanup error: ${e}`); }
       db = null;
     }
   };
@@ -130,7 +130,7 @@ export function getDb(): Database.Database {
   // Periodic WAL flush every 5 minutes (covers Windows where SIGINT may not fire)
   const flushInterval = setInterval(() => {
     if (db) {
-      try { db.pragma("wal_checkpoint(PASSIVE)"); } catch {}
+      try { db.pragma("wal_checkpoint(PASSIVE)"); } catch (e) { dbLog(`Periodic WAL flush failed: ${e}`); }
     }
   }, 5 * 60 * 1000);
   flushInterval.unref(); // don't keep process alive just for this
@@ -298,7 +298,7 @@ function migrateDevPubToJson(db: Database.Database) {
         const pubs = JSON.stringify(data.publishers || []);
         update.run(devs, pubs, g.id);
         migrated++;
-      } catch { /* skip */ }
+      } catch (e) { dbLog(`Dev/pub migration error for game ${g.id}: ${e}`); }
     }
   });
   tx();

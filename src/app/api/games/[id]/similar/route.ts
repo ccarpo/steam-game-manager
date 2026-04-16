@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { pushLog } from "@/lib/log-buffer";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/games/:id/similar — find similar games (from pre-computed table or on-the-fly)
@@ -28,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         })));
       }
     }
-  } catch { /* fall through to on-the-fly */ }
+  } catch (e) { pushLog("ERROR", `Similarity lookup failed for game ${id}: ${e}`); }
 
   // On-the-fly fallback
   const game = db.prepare("SELECT community_tags, steam_genres FROM games WHERE id = ?").get(id) as

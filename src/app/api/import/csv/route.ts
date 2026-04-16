@@ -61,6 +61,7 @@ const GAME_COLS = new Set([
   "publishers", "release_date", "review_sentiment", "positive_percent",
   "total_reviews", "metacritic_score", "steam_genres", "steam_features",
   "community_tags", "wishlist_date", "steam_image_url",
+  "user_rating", "queue_position",
 ]);
 
 function processSection(
@@ -135,9 +136,9 @@ function processSection(
       for (let c = 0; c < header.length; c++) {
         const colName = header[c];
         if (!GAME_COLS.has(colName)) continue;
-        if (!fullUpdate && !["name", "notes", "steam_appid", "added_at"].includes(colName)) continue;
+        if (!fullUpdate && !["name", "notes", "steam_appid", "added_at", "user_rating", "queue_position"].includes(colName)) continue;
         const val = fields[c] || null;
-        if (colName === "steam_appid" || colName === "positive_percent" || colName === "total_reviews" || colName === "metacritic_score") {
+        if (colName === "steam_appid" || colName === "positive_percent" || colName === "total_reviews" || colName === "metacritic_score" || colName === "user_rating" || colName === "queue_position") {
           sets.push(`${colName} = ?`);
           vals.push(val ? Number(val) : null);
         } else {
@@ -165,7 +166,7 @@ function processSection(
         if (!GAME_COLS.has(colName) || ["name", "notes", "steam_appid"].includes(colName)) continue;
         const val = fields[c] || null;
         if (val) {
-          if (["positive_percent", "total_reviews", "metacritic_score"].includes(colName)) {
+          if (["positive_percent", "total_reviews", "metacritic_score", "user_rating", "queue_position"].includes(colName)) {
             sets.push(`${colName} = ?`); vals.push(Number(val));
           } else {
             sets.push(`${colName} = ?`); vals.push(val);

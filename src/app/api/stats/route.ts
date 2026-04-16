@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { pushLog } from "@/lib/log-buffer";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function GET() {
   const allGenres: Record<string, number> = {};
   const rows = db.prepare("SELECT steam_genres FROM games WHERE steam_genres != '[]'").all() as { steam_genres: string }[];
   for (const r of rows) {
-    try { for (const g of JSON.parse(r.steam_genres)) allGenres[g] = (allGenres[g] || 0) + 1; } catch {}
+    try { for (const g of JSON.parse(r.steam_genres)) allGenres[g] = (allGenres[g] || 0) + 1; } catch (e) { pushLog("ERROR", `Stats genre parse: ${e}`); }
   }
   const topGenres = Object.entries(allGenres).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count }));
 
@@ -54,7 +55,7 @@ export async function GET() {
   const allCTags: Record<string, number> = {};
   const cRows = db.prepare("SELECT community_tags FROM games WHERE community_tags != '[]'").all() as { community_tags: string }[];
   for (const r of cRows) {
-    try { const arr = JSON.parse(r.community_tags); for (const t of arr) { const name = typeof t === "object" && t.name ? t.name : t; if (typeof name === "string") allCTags[name] = (allCTags[name] || 0) + 1; } } catch {}
+    try { const arr = JSON.parse(r.community_tags); for (const t of arr) { const name = typeof t === "object" && t.name ? t.name : t; if (typeof name === "string") allCTags[name] = (allCTags[name] || 0) + 1; } } catch (e) { pushLog("ERROR", `Stats ctag parse: ${e}`); }
   }
   const topCommunityTags = Object.entries(allCTags).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count }));
 
@@ -65,7 +66,7 @@ export async function GET() {
     try {
       const arr = r.developers.startsWith("[") ? JSON.parse(r.developers) : r.developers.split(",").map((s: string) => s.trim());
       for (const d of arr) if (d) allDevs[d] = (allDevs[d] || 0) + 1;
-    } catch {}
+    } catch (e) { pushLog("ERROR", `Stats dev parse: ${e}`); }
   }
   const topDevelopers = Object.entries(allDevs).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
 

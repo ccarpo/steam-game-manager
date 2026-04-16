@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { assignAllAutoTags } from "@/lib/auto-tags";
+import { pushLog } from "@/lib/log-buffer";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
@@ -70,7 +71,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           communityTags = parsed.slice(0, 20).map((t) => ({ name: t.name, count: t.count || 0 }));
         }
       }
-    } catch { /* ignore store page errors */ }
+    } catch (e) { pushLog("ERROR", `Store page scrape error for ${appid}: ${e}`); }
 
     // Cache raw responses
     db.prepare(`

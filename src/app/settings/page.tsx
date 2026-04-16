@@ -61,7 +61,7 @@ export default function SettingsPage() {
 
   return (
     <div className="fixed inset-0 overflow-y-auto bg-background text-foreground">
-      <div className="p-8 max-w-5xl mx-auto pb-16">
+      <div className="p-8 mx-auto pb-16">
         <div className="flex items-center gap-4 mb-4">
           <Link href="/" className="text-accent hover:underline text-sm">&larr; Back</Link>
           <h1 className="text-lg font-semibold">Settings</h1>
@@ -85,7 +85,7 @@ export default function SettingsPage() {
         </div>
         <div className="flex gap-4">
         {/* Left: settings content */}
-        <div className="flex-1 min-w-0 max-w-2xl space-y-6">
+        <div className="flex-1 min-w-0 space-y-6">
           {/* ═══ STEAM TAB ═══ */}
           <div className={activeTab !== "steam" ? "hidden" : "space-y-6"}>
           {/* Steam Credentials */}
@@ -539,7 +539,7 @@ export default function SettingsPage() {
           </div>{/* end tags tab */}
         </div>{/* end left content */}
         {/* Right: sticky log panel */}
-        <div className="w-72 shrink-0 hidden lg:block">
+        <div className="flex-1 min-w-0 hidden lg:block">
           <div className="sticky top-14 space-y-3">
             {/* Sync progress */}
             {syncProgress && (
@@ -556,7 +556,7 @@ export default function SettingsPage() {
                 <span className="text-[10px] text-muted font-medium">📋 Activity Log</span>
                 {syncLog.length > 0 && <button onClick={() => setSyncLog([])} className="text-[9px] text-danger hover:underline">Clear</button>}
               </div>
-              <div ref={logRef} className="bg-background rounded border border-border p-2 max-h-[50vh] overflow-y-auto font-mono text-[10px] text-muted space-y-0.5">
+              <div ref={logRef} className="bg-background rounded border border-border p-2 max-h-[50vh] min-h-[60px] overflow-y-auto font-mono text-[10px] text-muted space-y-0.5 resize-y">
                 {syncLog.length === 0 ? (
                   <div className="text-center py-4 text-muted/50">No activity yet</div>
                 ) : syncLog.map((line, i) => (
@@ -1144,7 +1144,7 @@ function SystemLog() {
         </div>
       </div>
       {expanded && (
-        <div className="bg-background rounded border border-border p-2 max-h-64 overflow-y-auto font-mono text-[11px] space-y-0.5">
+        <div className="bg-background rounded border border-border p-2 max-h-64 min-h-[60px] overflow-y-auto font-mono text-[11px] space-y-0.5 resize-y">
           {logs.length === 0 ? (
             <div className="text-muted text-center py-4">No log entries</div>
           ) : logs.map((l, i) => (
