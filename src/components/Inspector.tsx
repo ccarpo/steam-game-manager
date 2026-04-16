@@ -35,6 +35,7 @@ interface LayoutData {
   releaseDate: string;
   wishlistDate?: string | null;
   addedAt?: string | null;
+  userRating?: number | null;
   positivePercent: number;
   totalReviews: number;
   metacriticScore: number;
@@ -479,6 +480,7 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     developers: game.developers?.startsWith("[") ? JSON.parse(game.developers).join(", ") : (game.developers || ""),
     publishers: game.publishers?.startsWith("[") ? JSON.parse(game.publishers).join(", ") : (game.publishers || ""),
     releaseDate: game.release_date, wishlistDate: game.wishlist_date, addedAt: game.added_at,
+    userRating: game.user_rating,
     queuePosition: game.queue_position,
     recScore: recScore || null,
     positivePercent: game.positive_percent, totalReviews: game.total_reviews, metacriticScore: game.metacritic_score,
@@ -551,13 +553,12 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
 
   const recSlot = useMemo(() => {
     const hasRec = recScore && recScore.reasons?.length;
-    const hasCuration = game.queue_position != null;
-    if (!hasRec && !hasCuration) return null;
     return (
       <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          {hasCuration && <span className="text-[10px] text-purple-400 font-bold">📋 Curation #{game.queue_position}</span>}
-          {hasRec && <span className="text-[10px] text-cyan-400 font-bold">🎯 Rec Score: {Math.round(recScore!.score * 100)}</span>}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[10px] text-purple-400 font-bold">📋 Curation #{game.queue_position ?? "—"}</span>
+          <span className="text-[10px] text-amber-400 font-bold">⭐ Rating: {game.user_rating ?? "—"}</span>
+          <span className="text-[10px] text-cyan-400 font-bold">🎯 Rec: {hasRec ? Math.round(recScore!.score * 100) : "—"}</span>
         </div>
         {hasRec && (
           <div className="flex flex-wrap gap-1">
@@ -577,7 +578,7 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
         )}
       </div>
     );
-  }, [recScore, game.queue_position]);
+  }, [recScore, game.queue_position, game.user_rating]);
 
   const combinedSimilarSlot = useMemo(() => {
     if (!similarSlot && !recSlot) return null;

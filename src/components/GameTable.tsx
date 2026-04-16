@@ -81,6 +81,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "publishers", label: "Publisher", defaultWidth: 120, minWidth: 60, sortable: true, getValue: (g) => (g.publishers || "").toLowerCase() },
   { key: "appid", label: "AppID", defaultWidth: 75, minWidth: 50, sortable: true, getValue: (g) => g.steam_appid || 0 },
   { key: "curation", label: "Curation", defaultWidth: 65, minWidth: 40, sortable: true, getValue: (g) => g.queue_position ?? 99999 },
+  { key: "userRating", label: "⭐ Rating", defaultWidth: 60, minWidth: 40, sortable: true, getValue: (g) => g.user_rating ?? 0 },
   { key: "recScore", label: "🎯 Rec", defaultWidth: 55, minWidth: 40, sortable: true },
   { key: "notes", label: "Notes", defaultWidth: 150, minWidth: 60 },
   { key: "actions", label: "", defaultWidth: 70, minWidth: 50 },
@@ -263,6 +264,8 @@ function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocu
       );
     case "curation":
       return game.queue_position != null ? <span className="text-purple-400 font-bold text-xs">#{game.queue_position}</span> : <span className="text-muted/30">—</span>;
+    case "userRating":
+      return game.user_rating != null ? <span className="text-amber-400 font-bold text-xs">⭐{game.user_rating}</span> : <span className="text-muted/30">—</span>;
     case "recScore": {
       const rec = recScores?.get(game.id);
       if (!rec) return <span className="text-muted/30">—</span>;

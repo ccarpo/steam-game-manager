@@ -90,6 +90,8 @@ Then use the sync buttons to pull your library.
 
 ### Settings & Customization
 
+- **Tabbed layout** — Settings organized into 5 tabs: Steam & Sync, Display, Recommend, Tags, System. Sticky tab bar at top.
+- **Sticky activity log** — Right-side panel (on large screens) shows sync progress, activity log, and system log across all tabs. Falls back to inline on smaller screens.
 - **Screenshot quality** — Choose between thumbnail (600×338) or full HD (1920×1080) screenshots.
 - **Media limits** — Configure max screenshots and movies per game, download concurrency.
 - **Download toggles** — Enable/disable header images, screenshot thumbnails, HD screenshots, and movie thumbnails independently.
@@ -103,13 +105,14 @@ Then use the sync buttons to pull your library.
 
 ### Recommendation Engine
 
-- **Play Next scoring** — Sort by "🎯 Recommendation" to see games ranked by how well they match your preferences. 7 configurable signals: genre match, developer match, community tag match (with vote count weighting), score quality (configurable sweet spot), release maturity, time in library, and priority tag boost.
+- **Play Next scoring** — Sort by "🎯 Recommendation" to see games ranked by how well they match your preferences. 8 configurable signals: genre match, developer match, community tag match (with vote count weighting), score quality (configurable sweet spot), release maturity, time in library (configurable cap), personal match, and priority tag boost.
 - **Preference profile** — Built automatically from your played games. Rate games 1–10 to influence the profile — higher-rated games contribute more. View your full profile in Settings.
+- **Personal match (⭐📋)** — A dedicated signal that compares candidates against your user-rated and curated games. Rating 9 has much more influence than rating 5 (squared weighting). Curation queue position also feeds in — lower position = stronger influence. Gives you direct control over recommendations.
 - **Genre preferences** — Manually boost or penalize specific genres/community tags (e.g. "+50 Metroidvania, -30 Simulation"). Autocomplete from your library's available tags.
-- **Configurable weights** — Adjust signal weights in Settings with a live counter. Community tag mode: "by count" (popular tags = stronger) or "inverse" (rare tags = more distinctive).
+- **Configurable weights** — Adjust signal weights in Settings with a live counter. Community tag mode: "by count" (popular tags = stronger) or "inverse" (rare tags = more distinctive). Waiting time cap configurable (default 5 years).
 - **Three categories** — Played (training data), Priority (score boost per subtag), Exclude (hidden from results). All configurable with tag>subtag autocomplete.
 - **Curation queue** — Manual play ordering with auto-renumber. Set position 3.5 between 3 and 4, all positions renumber to integers.
-- **User rating** — Rate any game 1–10. Sort by "⭐ My Rating" or filter to "With rating" to manage your ratings.
+- **User rating** — Rate any game 1–10. Shown in inspector, list view (⭐ Rating column), and rec breakdown. Sort by "⭐ My Rating" or filter to "With rating" to manage your ratings. Included in CSV export by default.
 
 ### Stats Dashboard
 

@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null);
   const [showIgnoredInput, setShowIgnoredInput] = useState(false);
   const [lanIps, setLanIps] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState("steam");
   const logRef = useRef<HTMLDivElement>(null);
   const appendLog = useCallback((msg: string) => { setSyncLog((prev) => [...prev, msg]); }, []);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [syncLog]);
@@ -60,7 +61,7 @@ export default function SettingsPage() {
 
   return (
     <div className="fixed inset-0 overflow-y-auto bg-background text-foreground">
-      <div className="p-8 max-w-2xl mx-auto pb-16">
+      <div className="p-8 max-w-5xl mx-auto pb-16">
         <div className="flex items-center gap-4 mb-4">
           <Link href="/" className="text-accent hover:underline text-sm">&larr; Back</Link>
           <h1 className="text-lg font-semibold">Settings</h1>
@@ -69,38 +70,24 @@ export default function SettingsPage() {
             {lanIps.length > 0 && <>LAN: {lanIps.map((ip) => <a key={ip} href={`http://${ip}:3000`} target="_blank" rel="noopener noreferrer" className="text-accent ml-1 hover:underline">{ip}:3000</a>)}</>}
           </div>
         </div>
-        {/* Quick nav */}
-        <div className="flex flex-wrap gap-1.5 mb-6 sticky top-0 z-10 bg-background py-2 border-b border-border/50">
+        {/* Tab navigation */}
+        <div className="flex gap-1 mb-6 sticky top-0 z-10 bg-background py-2 border-b border-border/50">
           {[
-            { id: "steam", label: "🔑 Steam" }, { id: "media", label: "📷 Media" },
-            { id: "score", label: "🎨 Score" }, { id: "cards", label: "🃏 Cards" },
-            { id: "clipboard", label: "📋 Clipboard" }, { id: "csv", label: "📊 CSV" },
-            { id: "database", label: "🗄️ Database" }, { id: "recommendation", label: "🎯 Rec" },
-            { id: "prefs", label: "🎨 Prefs" }, { id: "log", label: "📝 Log" }, { id: "tags", label: "🏷️ Tags" },
-          ].map(s => (
-            <button key={s.id} onClick={() => {
-              const el = document.getElementById(`section-${s.id}`);
-              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-              className="px-2 py-0.5 rounded text-[10px] border border-border text-muted hover:text-foreground hover:border-accent transition-colors">{s.label}</button>
+            { id: "steam", label: "🔑 Steam & Sync" },
+            { id: "display", label: "🎨 Display" },
+            { id: "recommend", label: "🎯 Recommend" },
+            { id: "tags", label: "🏷️ Tags" },
+            { id: "system", label: "🗄️ System" },
+          ].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              className={`px-3 py-1.5 rounded-t text-xs border-b-2 transition-colors ${activeTab === t.id ? "border-accent text-accent bg-accent/5 font-medium" : "border-transparent text-muted hover:text-foreground hover:border-border"}`}>{t.label}</button>
           ))}
         </div>
-        <div className="space-y-6 [&>*[id]]:scroll-mt-20">
-          {/* Screenshot Quality */}
-          <div className="bg-surface rounded-lg p-4 border border-border">
-            <h2 className="text-sm font-medium mb-3">Screenshot Quality</h2>
-            <p className="text-xs text-muted mb-3">Controls the resolution of screenshots shown in the Inspector and Lightbox.</p>
-            <div className="flex gap-3">
-              {[{ value: "thumbnail", label: "Thumbnail", desc: "600 × 338" }, { value: "full", label: "Full", desc: "1920 × 1080" }].map((opt) => (
-                <button key={opt.value} onClick={() => update("screenshot_quality", opt.value)}
-                  className={`flex-1 p-3 rounded-lg border text-left transition-colors ${settings.screenshot_quality === opt.value ? "border-accent bg-accent/10" : "border-border hover:border-border/80"}`}>
-                  <div className="text-sm font-medium">{opt.label}</div>
-                  <div className="text-[10px] text-muted">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Media Limits */}
+        <div className="flex gap-4">
+        {/* Left: settings content */}
+        <div className="flex-1 min-w-0 max-w-2xl space-y-6">
+          {/* ═══ STEAM TAB ═══ */}
+          <div className={activeTab !== "steam" ? "hidden" : "space-y-6"}>
           {/* Steam Credentials */}
           <div className="bg-surface rounded-lg p-4 border border-border" id="section-steam">
             <h2 className="text-sm font-medium mb-3">Steam Credentials</h2>
@@ -157,7 +144,10 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
-          {/* Slideshow */}
+          </div>{/* end steam tab part 1 */}
+          {/* ═══ DISPLAY TAB ═══ */}
+          <div className={activeTab !== "display" ? "hidden" : "space-y-6"}>
+          {/* Log Level */}
           <div className="bg-surface rounded-lg p-4 border border-border">
             <h2 className="text-sm font-medium mb-3">Log Level</h2>
             <p className="text-xs text-muted mb-3">Server console log verbosity for sync operations.</p>
@@ -237,6 +227,9 @@ export default function SettingsPage() {
               </label>
             </div>
           </div>
+          </div>{/* end display tab */}
+          {/* ═══ STEAM TAB part 2 ═══ */}
+          <div className={activeTab !== "steam" ? "hidden" : "space-y-6"}>
           {/* Export / Import */}
           <div className="bg-surface rounded-lg p-4 border border-border">
             <h2 className="text-sm font-medium mb-3">Export / Import</h2>
@@ -388,16 +381,16 @@ export default function SettingsPage() {
             })}
             {/* Progress bar */}
             {syncProgress && (
-              <div className="mt-3 mb-2">
+              <div className="mt-3 mb-2 lg:hidden">
                 <div className="flex justify-between text-[10px] text-muted mb-1"><span>{syncRunning}</span><span>{syncProgress.current}/{syncProgress.total}</span></div>
                 <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
                   <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }} />
                 </div>
               </div>
             )}
-            {/* Log */}
+            {/* Log — only shown on small screens (large screens use sticky panel) */}
             {syncLog.length > 0 && (
-              <div ref={logRef} className="mt-3 bg-background rounded border border-border p-2 max-h-[200px] overflow-y-auto font-mono text-[11px] text-muted space-y-0.5">
+              <div className="mt-3 bg-background rounded border border-border p-2 max-h-[200px] overflow-y-auto font-mono text-[11px] text-muted space-y-0.5 lg:hidden">
                 {syncLog.map((line, i) => (
                   <div key={i} className={line.includes("✗") || line.includes("Error") ? "text-red-400" : line.includes("✓") || line.includes("done") ? "text-green-400" : line.startsWith("---") ? "text-accent" : ""}>{line}</div>
                 ))}
@@ -405,6 +398,9 @@ export default function SettingsPage() {
             )}
           </div>
 
+          </div>{/* end steam tab part 2 */}
+          {/* ═══ SYSTEM TAB ═══ */}
+          <div className={activeTab !== "system" ? "hidden" : "space-y-6"}>
           {/* Database */}
           <div className="bg-surface rounded-lg border border-border p-4" id="section-database">
             <h2 className="text-sm font-semibold mb-3">🗄️ Database</h2>
@@ -509,9 +505,14 @@ export default function SettingsPage() {
             </label>
           </div>
 
+          </div>{/* end system tab part 1 */}
+          {/* ═══ RECOMMEND TAB ═══ */}
+          <div className={activeTab !== "recommend" ? "hidden" : "space-y-6"}>
           {/* Recommendation Weights */}
           <RecWeightsConfig settings={settings} onUpdate={update} appendLog={appendLog} />
-
+          </div>{/* end recommend tab */}
+          {/* ═══ SYSTEM TAB part 2 ═══ */}
+          <div className={activeTab !== "system" ? "hidden" : "space-y-6"}>
           {/* UI Preferences */}
           <div className="bg-surface rounded-lg border border-border p-4" id="section-prefs">
             <h2 className="text-sm font-semibold mb-3">🎨 UI Preferences</h2>
@@ -528,12 +529,46 @@ export default function SettingsPage() {
             >🗑 Reset UI Preferences</button>
           </div>
 
-          {/* System Log */}
-          <div id="section-log"><SystemLog /></div>
-
+          {/* System Log — only on small screens, large screens use sticky panel */}
+          <div id="section-log" className="lg:hidden"><SystemLog /></div>
+          </div>{/* end system tab part 2 */}
+          {/* ═══ TAGS TAB ═══ */}
+          <div className={activeTab !== "tags" ? "hidden" : "space-y-6"}>
           {/* Tag & Subtag Management */}
           <div id="section-tags"><TagManager /></div>
+          </div>{/* end tags tab */}
+        </div>{/* end left content */}
+        {/* Right: sticky log panel */}
+        <div className="w-72 shrink-0 hidden lg:block">
+          <div className="sticky top-14 space-y-3">
+            {/* Sync progress */}
+            {syncProgress && (
+              <div className="bg-surface rounded-lg border border-border p-3">
+                <div className="flex justify-between text-[10px] text-muted mb-1"><span>{syncRunning}</span><span>{syncProgress.current}/{syncProgress.total}</span></div>
+                <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }} />
+                </div>
+              </div>
+            )}
+            {/* Activity log */}
+            <div className="bg-surface rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] text-muted font-medium">📋 Activity Log</span>
+                {syncLog.length > 0 && <button onClick={() => setSyncLog([])} className="text-[9px] text-danger hover:underline">Clear</button>}
+              </div>
+              <div ref={logRef} className="bg-background rounded border border-border p-2 max-h-[50vh] overflow-y-auto font-mono text-[10px] text-muted space-y-0.5">
+                {syncLog.length === 0 ? (
+                  <div className="text-center py-4 text-muted/50">No activity yet</div>
+                ) : syncLog.map((line, i) => (
+                  <div key={i} className={line.includes("✗") || line.includes("Error") ? "text-red-400" : line.includes("✓") || line.includes("done") || line.includes("Done") ? "text-green-400" : line.startsWith("---") ? "text-accent" : ""}>{line}</div>
+                ))}
+              </div>
+            </div>
+            {/* System log inline */}
+            <SystemLog />
+          </div>
         </div>
+        </div>{/* end flex row */}
       </div>
     </div>
   );
@@ -706,9 +741,11 @@ const ALL_CSV_COLS = [
   { key: "community_tags", label: "Community Tags" },
   { key: "wishlist_date", label: "Wishlist Date" },
   { key: "steam_image_url", label: "Image URL" },
+  { key: "user_rating", label: "User Rating" },
+  { key: "queue_position", label: "Curation #" },
 ];
 
-const DEFAULT_CSV_COLS = ["id", "name", "steam_appid", "notes", "added_at", "l0", "genres", "meta"];
+const DEFAULT_CSV_COLS = ["id", "name", "steam_appid", "notes", "added_at", "l0", "genres", "meta", "user_rating", "queue_position"];
 
 function CsvColumnsConfig({ settings, onUpdate }: { settings: Record<string, string>; onUpdate: (key: string, value: string) => void }) {
   const current: string[] = (() => {
@@ -791,16 +828,30 @@ function SubtagInput({ allSubtags, onSelect, placeholder = "tag > subtag..." }: 
 }
 
 function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<string, string>; onUpdate: (k: string, v: string) => void; appendLog: (msg: string) => void }) {
-  const defaultWeights = { genreMatch: 25, devMatch: 5, ctagMatch: 20, score: 20, maturity: 15, waiting: 15, priority: 20 };
-  const [weights, setWeights] = useState(() => {
-    try { return { ...defaultWeights, ...JSON.parse(settings.rec_weights || "{}") }; } catch { return defaultWeights; }
-  });
-  const [ctagMode, setCtagMode] = useState(settings.rec_ctag_mode || "count");
-  const [sweetSpot, setSweetSpot] = useState(() => {
-    try { return JSON.parse(settings.rec_sweet_spot || '{"min":70,"max":85}'); } catch { return { min: 70, max: 85 }; }
-  });
-  const [useAllRated, setUseAllRated] = useState(settings.rec_use_all_rated === "1");
+  const defaultWeights = { genreMatch: 25, devMatch: 5, ctagMatch: 20, score: 20, maturity: 15, waiting: 15, ratedMatch: 0, priority: 20 };
+  const [weights, setWeights] = useState(defaultWeights);
+  const [ctagMode, setCtagMode] = useState("count");
+  const [sweetSpot, setSweetSpot] = useState({ min: 70, max: 85 });
+  const [waitingCap, setWaitingCap] = useState(1825);
+  const [useAllRated, setUseAllRated] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Sync state from settings when they arrive (settings load async)
+  useEffect(() => {
+    if (!settings.rec_weights && !settings.rec_ctag_mode && !settings.rec_sweet_spot) return; // not loaded yet
+    if (settingsLoaded) return; // only sync once
+    try { setWeights({ ...defaultWeights, ...JSON.parse(settings.rec_weights || "{}") }); } catch {}
+    setCtagMode(settings.rec_ctag_mode || "count");
+    try { setSweetSpot(JSON.parse(settings.rec_sweet_spot || '{"min":70,"max":85}')); } catch {}
+    setWaitingCap(parseInt(settings.rec_waiting_cap || "1825") || 1825);
+    setUseAllRated(settings.rec_use_all_rated === "1");
+    try { setPlayed(JSON.parse(settings.rec_played || '["done","played_elsewhere"]')); } catch {}
+    try { setPriority(JSON.parse(settings.rec_priority || '[{"subtag":"next","boost":30},{"subtag":"franchise","boost":20}]')); } catch {}
+    try { setExcludes(JSON.parse(settings.rec_exclude || '["hide","not_my_type"]')); } catch {}
+    try { setGenrePrefs(JSON.parse(settings.rec_genre_prefs || "[]")); } catch {}
+    setSettingsLoaded(true);
+  }, [settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load all subtags + genres/community tags for autocomplete
   const [allSubtags, setAllSubtags] = useState<{ tag: string; subtag: string }[]>([]);
@@ -819,21 +870,13 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
   }, []);
 
   // Three categories: played (training), priority (boost), exclude (hidden)
-  const [played, setPlayed] = useState<string[]>(() => {
-    try { return JSON.parse(settings.rec_played || '["done","played_elsewhere"]'); } catch { return ["done", "played_elsewhere"]; }
-  });
-  const [priority, setPriority] = useState<{ subtag: string; boost: number }[]>(() => {
-    try { return JSON.parse(settings.rec_priority || '[{"subtag":"next","boost":30},{"subtag":"franchise","boost":20}]'); } catch { return [{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]; }
-  });
-  const [excludes, setExcludes] = useState<string[]>(() => {
-    try { return JSON.parse(settings.rec_exclude || '["hide","not_my_type"]'); } catch { return ["hide", "not_my_type"]; }
-  });
+  const [played, setPlayed] = useState<string[]>(["done", "played_elsewhere"]);
+  const [priority, setPriority] = useState<{ subtag: string; boost: number }[]>([{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]);
+  const [excludes, setExcludes] = useState<string[]>(["hide", "not_my_type"]);
 
   const [newPrioBoost, setNewPrioBoost] = useState(20);
   const [profileData, setProfileData] = useState<{ playedCount: number; genres: { name: string; weight: number }[]; devs: { name: string; weight: number }[]; ctags: { name: string; weight: number }[] } | null>(null);
-  const [genrePrefs, setGenrePrefs] = useState<{ tag: string; value: number }[]>(() => {
-    try { return JSON.parse(settings.rec_genre_prefs || "[]"); } catch { return []; }
-  });
+  const [genrePrefs, setGenrePrefs] = useState<{ tag: string; value: number }[]>([]);
   const [newGenrePrefTag, setNewGenrePrefTag] = useState("");
   const [newGenrePrefValue, setNewGenrePrefValue] = useState(50);
 
@@ -841,6 +884,7 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
     onUpdate("rec_weights", JSON.stringify(weights));
     onUpdate("rec_ctag_mode", ctagMode);
     onUpdate("rec_sweet_spot", JSON.stringify(sweetSpot));
+    onUpdate("rec_waiting_cap", String(waitingCap));
     onUpdate("rec_use_all_rated", useAllRated ? "1" : "0");
     onUpdate("rec_genre_prefs", JSON.stringify(genrePrefs));
     onUpdate("rec_played", JSON.stringify(played));
@@ -853,6 +897,7 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
     setWeights(defaultWeights);
     setCtagMode("count");
     setSweetSpot({ min: 70, max: 85 });
+    setWaitingCap(1825);
     setUseAllRated(false);
     setGenrePrefs([]);
     setPlayed(["done", "played_elsewhere"]);
@@ -874,29 +919,31 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
           <p><span className="text-cyan-400">📚 Played</span> — Games with these subtags are your training data. Their genres, developers, and community tags build your preference profile.</p>
           <p><span className="text-green-400">⭐ Priority</span> — Games with these subtags get a score boost. Higher boost = stronger push to the top. Use for tags like &quot;next&quot; or &quot;franchise&quot;.</p>
           <p><span className="text-red-400">🚫 Exclude</span> — Games with these subtags are completely hidden from recommendations. Not scored, not shown.</p>
-          <p className="pt-1 border-t border-border/50"><span className="text-foreground">Scoring:</span> Each game gets a 0–1 score from 7 signals: genre match, dev/pub match, community tag match, score quality (configurable sweet spot), release maturity, waiting time, and priority boost. Weights are normalized — enter any numbers.</p>
+          <p className="pt-1 border-t border-border/50"><span className="text-foreground">Scoring:</span> Each game gets a 0–1 score from 8 signals: genre match, dev/pub match, community tag match, score quality (configurable sweet spot), release maturity, waiting time, rated match, and priority boost. Weights are normalized — enter any numbers.</p>
+          <p><span className="text-foreground">Personal Match (⭐📋):</span> Compares each candidate against games you&apos;ve rated or curated. Higher user ratings and lower curation numbers mean stronger influence. Set the &quot;⭐📋 Personal&quot; weight to control impact.</p>
           <p><span className="text-foreground">User Rating:</span> Rate played games 1–10 in the Edit Modal. Higher-rated games contribute more to your preference profile (rating 10 = full weight, 5 = half, unrated = 0.5 neutral). Rate your favorite metroidvanias 9–10 and they&apos;ll dominate your profile.</p>
         </div>
       )}
 
       {/* Signal weights */}
       {(() => { const total = Object.values(weights as Record<string, number>).reduce((a, b) => a + b, 0); return <p className="text-[10px] text-muted mb-2">Signal weights (total: {total} — remaining from 100: {Math.max(0, 100 - total)})</p>; })()}
-      <div className="grid grid-cols-7 gap-2 mb-1">
-        {(["genreMatch", "devMatch", "ctagMatch", "score", "maturity", "waiting", "priority"] as const).map(k => (
-          <label key={k} className="text-center">
-            <span className="text-[10px] text-muted block">{
-              { genreMatch: "Genres", devMatch: "Dev/Pub", ctagMatch: "Comm Tags", score: "Score", maturity: "Maturity", waiting: "Waiting", priority: "Priority" }[k]
+      <div className="grid grid-cols-4 gap-2 mb-1">
+        {(["genreMatch", "devMatch", "ctagMatch", "score", "maturity", "waiting", "ratedMatch", "priority"] as const).map(k => (
+          <label key={k} className="flex items-center gap-2">
+            <span className="text-[10px] text-muted w-20 text-right shrink-0">{
+              { genreMatch: "Genres", devMatch: "Dev/Pub", ctagMatch: "Comm Tags", score: "Score", maturity: "Maturity", waiting: "Waiting", ratedMatch: "⭐📋 Personal", priority: "Priority" }[k]
             }</span>
             <input type="number" min={0} value={weights[k]} onChange={(e) => setWeights({ ...weights, [k]: Number(e.target.value) || 0 })}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-sm text-center" />
+              className="w-16 bg-background border border-border rounded px-2 py-1 text-sm text-center" />
           </label>
         ))}
       </div>
-      <button onClick={() => setWeights({ genreMatch: 0, devMatch: 0, ctagMatch: 0, score: 0, maturity: 0, waiting: 0, priority: 0 })}
-        className="text-[9px] text-muted hover:text-foreground mb-4">Reset all to 0</button>
+      <button onClick={() => setWeights({ genreMatch: 0, devMatch: 0, ctagMatch: 0, score: 0, maturity: 0, waiting: 0, ratedMatch: 0, priority: 0 })}
+        className="text-[9px] text-muted hover:text-foreground mb-3">Reset all to 0</button>
 
-      <div className="flex items-center gap-4 mb-4">
-        <label className="text-xs text-muted flex items-center gap-1.5">
+      {/* Options — 2x2 grid */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4 text-xs text-muted">
+        <label className="flex items-center gap-1.5">
           Community tag mode:
           <select value={ctagMode} onChange={(e) => setCtagMode(e.target.value)}
             className="bg-background border border-border rounded px-2 py-0.5 text-xs">
@@ -904,7 +951,7 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
             <option value="inverse">Inverse (rare = distinctive)</option>
           </select>
         </label>
-        <label className="text-xs text-muted flex items-center gap-1.5">
+        <label className="flex items-center gap-1.5">
           Score sweet spot:
           <input type="number" min={0} max={100} value={sweetSpot.min} onChange={(e) => setSweetSpot({ ...sweetSpot, min: Number(e.target.value) })}
             className="w-12 bg-background border border-border rounded px-1 py-0.5 text-xs text-center" />
@@ -913,7 +960,13 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
             className="w-12 bg-background border border-border rounded px-1 py-0.5 text-xs text-center" />
           %
         </label>
-        <label className="text-xs text-muted flex items-center gap-1.5 cursor-pointer">
+        <label className="flex items-center gap-1.5">
+          Waiting cap:
+          <input type="number" min={30} max={7300} step={30} value={waitingCap} onChange={(e) => setWaitingCap(Number(e.target.value) || 1825)}
+            className="w-16 bg-background border border-border rounded px-1 py-0.5 text-xs text-center" />
+          days
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={useAllRated} onChange={(e) => setUseAllRated(e.target.checked)} className="accent-accent" />
           Include all user-rated games in training
         </label>

@@ -10,6 +10,7 @@ interface GameRow {
   release_date: string; added_at: string | null;
   steam_genres: string; community_tags: string; developers: string;
   user_rating: number | null;
+  queue_position: number | null;
 }
 
 function safeJsonParse(s: string | null): string[] {
@@ -81,9 +82,10 @@ interface Weights {
   score: number;       // Score quality
   maturity: number;    // Release maturity
   waiting: number;     // Time in library
+  ratedMatch: number;  // Similarity to user-rated games
 }
 
-const DEFAULT_WEIGHTS: Weights = { genreMatch: 0.25, devMatch: 0.05, ctagMatch: 0.20, score: 0.20, maturity: 0.15, waiting: 0.15 };
+const DEFAULT_WEIGHTS: Weights = { genreMatch: 0.25, devMatch: 0.05, ctagMatch: 0.20, score: 0.20, maturity: 0.15, waiting: 0.15, ratedMatch: 0 };
 
 function scoreGame(
   game: GameRow,
@@ -92,7 +94,9 @@ function scoreGame(
   now: number,
   scoreSource: "steam" | "steamdb",
   sweetSpot: { min: number; max: number } = { min: 70, max: 85 },
-  tagIdf: Map<string, number> = new Map(), // inverse document frequency per community tag
+  tagIdf: Map<string, number> = new Map(),
+  ratedProfiles: { genres: Set<string>; ctags: Set<string>; weight: number }[] = [],
+  waitingCapDays: number = 365,
 ) {
   const breakdown: Record<string, number> = {};
 
@@ -142,8 +146,29 @@ function scoreGame(
   // 5. Waiting time — longer in library = nudge
   if (game.added_at) {
     const days = (now - new Date(game.added_at).getTime()) / (1000 * 60 * 60 * 24);
-    breakdown.waiting = Math.min(1, days / 365);
+    breakdown.waiting = Math.min(1, days / waitingCapDays);
   } else breakdown.waiting = 0.5;
+
+  // 7. Rated match — similarity to user-rated games, weighted by rating
+  if (ratedProfiles.length > 0) {
+    const gameGenres = new Set(safeJsonParse(game.steam_genres));
+    const gameCtags = new Set(safeJsonParse(game.community_tags));
+    let matchSum = 0, weightSum = 0;
+    for (const rp of ratedProfiles) {
+      // Per-rated-game: what fraction of its tags does the candidate share?
+      let overlap = 0, rpTotal = 0;
+      for (const g of rp.genres) { rpTotal++; if (gameGenres.has(g)) overlap++; }
+      for (const t of rp.ctags) { rpTotal++; if (gameCtags.has(t)) overlap++; }
+      const sim = rpTotal > 0 ? overlap / rpTotal : 0;
+      // Weight by rating squared for stronger differentiation (rating 9 → 81, rating 5 → 25)
+      const w = rp.weight * rp.weight;
+      matchSum += sim * w;
+      weightSum += w;
+    }
+    breakdown.ratedMatch = weightSum > 0 ? matchSum / weightSum : 0;
+  } else {
+    breakdown.ratedMatch = 0;
+  }
 
   const total =
     breakdown.genreMatch * weights.genreMatch +
@@ -151,7 +176,8 @@ function scoreGame(
     breakdown.ctagMatch * weights.ctagMatch +
     breakdown.score * weights.score +
     breakdown.maturity * weights.maturity +
-    breakdown.waiting * weights.waiting;
+    breakdown.waiting * weights.waiting +
+    breakdown.ratedMatch * weights.ratedMatch;
 
   return { total: Math.round(total * 100) / 100, breakdown };
 }
@@ -179,6 +205,7 @@ export async function GET() {
         score: (raw.score || 0) / sum,
         maturity: (raw.maturity || 0) / sum,
         waiting: (raw.waiting || 0) / sum,
+        ratedMatch: (raw.ratedMatch || 0) / sum,
         priority: (raw.priority || 0) / sum,
       };
     }
@@ -198,7 +225,7 @@ export async function GET() {
   try { excludeSubtags = JSON.parse(getSetting("rec_exclude", '["hide","not_my_type"]')); } catch {}
 
   // Load all games + tags (as tag>subtag pairs for matching)
-  const allGames = db.prepare("SELECT id, name, steam_appid, positive_percent, total_reviews, release_date, added_at, steam_genres, community_tags, developers, user_rating FROM games").all() as GameRow[];
+  const allGames = db.prepare("SELECT id, name, steam_appid, positive_percent, total_reviews, release_date, added_at, steam_genres, community_tags, developers, user_rating, queue_position FROM games").all() as GameRow[];
 
   const gameTagPairs = new Map<number, string[]>(); // "tag>subtag" pairs per game
   const tagRows = db.prepare(`
@@ -261,6 +288,8 @@ export async function GET() {
   let sweetSpot = { min: 70, max: 85 };
   try { const ss = getSetting("rec_sweet_spot", ""); if (ss) sweetSpot = JSON.parse(ss); } catch {}
 
+  const waitingCapDays = parseInt(getSetting("rec_waiting_cap", "1825")) || 1825;
+
   // Compute IDF — only when ctagWeightMode is "inverse"
   const tagIdf = new Map<string, number>();
   if (ctagWeightMode === "inverse") {
@@ -274,8 +303,26 @@ export async function GET() {
     }
   }
 
+  // Build per-game profiles for ratedMatch signal (user-rated + curated games)
+  const ratedOrCurated = allGames.filter(g => gameCategory.get(g.id) !== "excluded" &&
+    ((g.user_rating != null && g.user_rating > 0) || (g.queue_position != null)));
+  // Normalize curation: position 1 = highest weight, max position = lowest
+  const maxQueuePos = Math.max(...ratedOrCurated.map(g => g.queue_position ?? 0), 1);
+  const ratedProfiles = ratedOrCurated.map(g => {
+    // Combine both signals: user_rating (0.1-1.0) and curation (inverted, 0.2-1.0)
+    const ratingW = g.user_rating ? g.user_rating / 10 : 0;
+    const curationW = g.queue_position != null ? Math.max(0.2, 1 - (g.queue_position - 1) / maxQueuePos) : 0;
+    // Take the max of both — if a game has both, the stronger signal wins
+    const weight = Math.max(ratingW, curationW) || 0.5;
+    return {
+      genres: new Set(safeJsonParse(g.steam_genres)),
+      ctags: new Set(safeJsonParse(g.community_tags)),
+      weight,
+    };
+  }).filter(p => p.weight > 0);
+
   const scoreWithPrio = (g: GameRow) => {
-    const base = scoreGame(g, profile, weights, now, scoreSource, sweetSpot, tagIdf);
+    const base = scoreGame(g, profile, weights, now, scoreSource, sweetSpot, tagIdf, ratedProfiles, waitingCapDays);
     const pairs = gameTagPairs.get(g.id) || [];
     let prioBoost = 0;
     for (const p of pairs) { prioBoost = Math.max(prioBoost, prioMap.get(p) || 0); }
@@ -286,14 +333,14 @@ export async function GET() {
 
   const SIGNAL_LABELS: Record<string, string> = {
     genreMatch: "Genre match", devMatch: "Dev/Pub match", ctagMatch: "Community tags",
-    score: "Score quality", maturity: "Mature/polished", waiting: "Long in library", priority: "Priority tag",
+    score: "Score quality", maturity: "Mature/polished", waiting: "Long in library",
+    ratedMatch: "⭐📋 Personal match", priority: "Priority tag",
   };
 
   const getReasons = (breakdown: Record<string, number>): string[] => {
     return Object.entries(breakdown)
       .sort((a, b) => {
-        // Fixed order for consistency
-        const order = ["genreMatch", "devMatch", "ctagMatch", "score", "maturity", "waiting", "priority"];
+        const order = ["genreMatch", "devMatch", "ctagMatch", "score", "maturity", "waiting", "ratedMatch", "priority"];
         return order.indexOf(a[0]) - order.indexOf(b[0]);
       })
       .map(([k, v]) => {

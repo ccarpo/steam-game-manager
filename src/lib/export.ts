@@ -81,8 +81,9 @@ const ALL_COLS = [
   "review_sentiment", "positive_percent", "total_reviews", "metacritic_score",
   "steam_genres", "steam_features", "community_tags",
   "wishlist_date", "steam_image_url",
+  "user_rating", "queue_position",
 ] as const;
-const DEFAULT_COLS = ["id", "name", "steam_appid", "notes", "added_at", "l0", "genres", "meta"];
+const DEFAULT_COLS = ["id", "name", "steam_appid", "notes", "added_at", "l0", "genres", "meta", "user_rating", "queue_position"];
 
 type GameRow = {
   id: number; name: string; steam_appid: number | null; notes: string;
@@ -93,6 +94,7 @@ type GameRow = {
   positive_percent: number; total_reviews: number; metacritic_score: number;
   steam_genres: string; steam_features: string; community_tags: string;
   wishlist_date: string | null; steam_image_url: string | null;
+  user_rating: number | null; queue_position: number | null;
 };
 
 function esc(s: string | null | undefined): string {
@@ -124,6 +126,8 @@ function colVal(row: GameRow, col: string): string {
     case "community_tags": { const ct = row.community_tags; if (!ct || ct === "[]") return ""; try { const arr = JSON.parse(ct); if (arr.length > 0 && typeof arr[0] === "object") return esc(arr.map((t: { name: string }) => t.name).join(", ")); return esc(ct); } catch { return esc(ct); } }
     case "wishlist_date": return row.wishlist_date || "";
     case "steam_image_url": return esc(row.steam_image_url);
+    case "user_rating": return row.user_rating ? String(row.user_rating) : "";
+    case "queue_position": return row.queue_position ? String(row.queue_position) : "";
     default: return "";
   }
 }
@@ -138,6 +142,7 @@ export function generateCsv(db: Database.Database): string {
            g.review_sentiment, g.positive_percent, g.total_reviews, g.metacritic_score,
            g.steam_genres, g.steam_features, g.community_tags,
            g.wishlist_date, g.steam_image_url,
+           g.user_rating, g.queue_position, g.rec_score,
            t.name as tag_name,
            GROUP_CONCAT(CASE WHEN s.type = 'genre' THEN s.name END, '|') as genres,
            GROUP_CONCAT(CASE WHEN s.type = 'meta' THEN s.name END, '|') as meta
