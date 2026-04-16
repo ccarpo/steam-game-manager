@@ -37,6 +37,8 @@ export interface Game {
   total_movies: number;
   wishlist_date: string | null;
   added_at: string | null;
+  queue_position: number | null;
+  user_rating: number | null;
   created_at: string;
   updated_at: string;
   tags?: GameTag[];

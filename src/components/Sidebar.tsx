@@ -5,6 +5,7 @@ import { Filters, GenreInfo, computeDynamicCounts } from "@/lib/hooks";
 import { Tag, Subtag, GameWithTags } from "@/lib/types";
 
 type SortMode = "alpha" | "count";
+type TagSortMode = "alpha" | "count" | "custom";
 type SteamTab = "genres" | "features" | "devpub";
 type LayoutMode = "tabbed" | "classic";
 
@@ -41,6 +42,8 @@ export default function Sidebar({
   const [expandedTagIds, setExpandedTagIds] = useState<Set<number>>(new Set());
   const [steamTab, setSteamTab] = useState<SteamTab>("genres");
   const [steamSort, setSteamSort] = useState<SortMode>("count");
+  const [tagSort, setTagSort] = useState<TagSortMode>(() => loadPref<TagSortMode>("gm_tag_sort", "count"));
+  const [tagOrder, setTagOrder] = useState<number[]>(() => loadPref<number[]>("gm_tag_order", []));
   const [layout, setLayout] = useState<LayoutMode>("tabbed");
   const [splitPct, setSplitPct] = useState(50);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -104,16 +107,30 @@ export default function Sidebar({
   const sortedTags = useMemo(() => {
     const incTagIds = filters.includeTags || [], excTagIds = filters.excludeTags || [];
     const incSubIds = filters.includeSubtags || [], excSubIds = filters.excludeSubtags || [];
-    const byCount = [...tags].sort((a, b) => (dyn.customTagCounts.get(b.id) || 0) - (dyn.customTagCounts.get(a.id) || 0));
+    let sorted: Tag[];
+    if (tagSort === "custom" && tagOrder.length > 0) {
+      const orderMap = new Map(tagOrder.map((id, i) => [id, i]));
+      sorted = [...tags].sort((a, b) => {
+        const ai = orderMap.get(a.id) ?? 999;
+        const bi = orderMap.get(b.id) ?? 999;
+        return ai - bi;
+      });
+    } else {
+      sorted = [...tags].sort((a, b) =>
+        tagSort === "count"
+          ? (dyn.customTagCounts.get(b.id) || 0) - (dyn.customTagCounts.get(a.id) || 0)
+          : a.name.localeCompare(b.name)
+      );
+    }
     const isSelected = (t: Tag) => {
       if (incTagIds.includes(t.id) || excTagIds.includes(t.id)) return true;
       const subs = subsByTag.get(t.id) || [];
       return subs.some(s => incSubIds.includes(s.id) || excSubIds.includes(s.id));
     };
-    const sel = byCount.filter(t => isSelected(t));
-    const rest = byCount.filter(t => !isSelected(t));
+    const sel = sorted.filter(t => isSelected(t));
+    const rest = sorted.filter(t => !isSelected(t));
     return [...sel, ...rest];
-  }, [tags, dyn.customTagCounts, filters.includeTags, filters.excludeTags, filters.includeSubtags, filters.excludeSubtags, subsByTag]);
+  }, [tags, dyn.customTagCounts, filters.includeTags, filters.excludeTags, filters.includeSubtags, filters.excludeSubtags, subsByTag, tagSort, tagOrder]);
 
   // Toggle helpers
   const toggleIncTag = (id: number) => {
@@ -310,6 +327,9 @@ export default function Sidebar({
       <button onClick={() => onChange({ ...filters, withNotes: !filters.withNotes })}
         className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.withNotes ? "bg-accent/20 text-accent" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
       >📝 With notes</button>
+      <button onClick={() => onChange({ ...filters, withRating: !filters.withRating })}
+        className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.withRating ? "bg-accent/20 text-accent" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
+      >⭐ With rating</button>
       <button onClick={() => onChange({ ...filters, hideWishlistOnly: !filters.hideWishlistOnly })}
         className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.hideWishlistOnly ? "bg-accent/20 text-accent" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
       >🎯 Curated only</button>
@@ -325,6 +345,64 @@ export default function Sidebar({
           >🚫 Hide not on Steam</button>
         );
       })()}
+      {/* Score range filter */}
+      <div className="px-2 py-1">
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className="text-muted shrink-0">Score</span>
+          <input type="number" min={0} max={100} placeholder="0"
+            value={filters.scoreMin ?? ""}
+            onChange={(e) => onChange({ ...filters, scoreMin: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-10 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          <div className="flex-1 relative h-4">
+            <input type="range" min={0} max={100}
+              value={filters.scoreMin ?? 0}
+              onChange={(e) => { const v = Number(e.target.value); onChange({ ...filters, scoreMin: v > 0 ? Math.min(v, (filters.scoreMax ?? 100)) : undefined }); }}
+              className="absolute inset-0 w-full accent-green-500 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto" style={{ background: "transparent" }} />
+            <input type="range" min={0} max={100}
+              value={filters.scoreMax ?? 100}
+              onChange={(e) => { const v = Number(e.target.value); onChange({ ...filters, scoreMax: v < 100 ? Math.max(v, (filters.scoreMin ?? 0)) : undefined }); }}
+              className="absolute inset-0 w-full accent-green-500 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto" style={{ background: "transparent" }} />
+          </div>
+          <input type="number" min={0} max={100} placeholder="100"
+            value={filters.scoreMax ?? ""}
+            onChange={(e) => { const v = Number(e.target.value); onChange({ ...filters, scoreMax: e.target.value ? (v < 100 ? v : undefined) : undefined }); }}
+            className="w-10 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          {(filters.scoreMin !== undefined || filters.scoreMax !== undefined) && (
+            <button onClick={() => onChange({ ...filters, scoreMin: undefined, scoreMax: undefined })} className="text-danger text-[10px]">✕</button>
+          )}
+        </div>
+      </div>
+      {/* Review count filter */}
+      <div className="px-2 py-1">
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className="text-muted shrink-0">Reviews</span>
+          <input type="number" min={0} placeholder="0"
+            value={filters.reviewsMin ?? ""}
+            onChange={(e) => onChange({ ...filters, reviewsMin: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-14 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          <span className="text-muted">–</span>
+          <input type="number" min={0} placeholder="∞"
+            value={filters.reviewsMax ?? ""}
+            onChange={(e) => onChange({ ...filters, reviewsMax: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-14 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          {(filters.reviewsMin !== undefined || filters.reviewsMax !== undefined) && (
+            <button onClick={() => onChange({ ...filters, reviewsMin: undefined, reviewsMax: undefined })} className="text-danger text-[10px]">✕</button>
+          )}
+        </div>
+      </div>
+      {/* Min community tags filter */}
+      <div className="px-2 py-1">
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className="text-muted shrink-0">Min tags</span>
+          <input type="number" min={0} max={20} placeholder="—"
+            value={filters.minCommunityTags ?? ""}
+            onChange={(e) => onChange({ ...filters, minCommunityTags: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-10 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          {filters.minCommunityTags !== undefined && (
+            <button onClick={() => onChange({ ...filters, minCommunityTags: undefined })} className="text-danger text-[10px]">✕</button>
+          )}
+        </div>
+      </div>
     </div>
   );
 
@@ -368,6 +446,33 @@ export default function Sidebar({
             {isOpen && fSubs.length > 0 && (() => {
               const genreSubs = fSubs.filter((s) => s.type === "genre");
               const metaSubs = fSubs.filter((s) => s.type === "meta");
+              // Group by type for auto-tags (release, sentiment, score) or default genre/meta
+              const types = [...new Set(fSubs.map(s => s.type))];
+              const isAutoTag = types.some(t => !["genre", "meta"].includes(t));
+
+              if (isAutoTag) {
+                const TYPE_COLORS: Record<string, string> = {
+                  release: "#f97316", sentiment: "#8b5cf6", score: "#22c55e",
+                  genre: "#818cf8", meta: "#f59e0b",
+                };
+                return (
+                  <div className="ml-5 mr-1 mb-1 space-y-1">
+                    {types.map(type => {
+                      const typeSubs = fSubs.filter(s => s.type === type);
+                      if (typeSubs.length === 0) return null;
+                      return (
+                        <div key={type}>
+                          <div className="text-[8px] uppercase tracking-wider px-1 pt-0.5 pb-0.5 font-medium" style={{ color: TYPE_COLORS[type] || "#999" }}>{type}</div>
+                          <div className="grid grid-cols-2 gap-x-1">
+                            {typeSubs.map((sub) => <SubItem key={sub.id} sub={sub} count={dyn.subtagCounts.get(sub.id) || 0} accent={TYPE_COLORS[type] || "#999"} inc={(filters.includeSubtags || []).includes(sub.id)} exc={(filters.excludeSubtags || []).includes(sub.id)} onInc={() => toggleIncSub(sub.id)} onExc={() => toggleExcSub(sub.id)} />)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
               return (
                 <div className="ml-5 mr-1 mb-1 grid grid-cols-2 gap-x-1">
                   <div>
@@ -456,6 +561,10 @@ export default function Sidebar({
                 {tagsOpen ? "\u25BE" : "\u25B8"} Custom Tags ({tags.length})
               </span>
               <div className="flex items-center gap-1">
+                <button onClick={(e) => { e.stopPropagation(); const modes: TagSortMode[] = ["count", "alpha", "custom"]; const next = modes[(modes.indexOf(tagSort) + 1) % modes.length]; setTagSort(next); localStorage.setItem("gm_tag_sort", JSON.stringify(next)); }}
+                  className="text-[9px] px-1 py-0 rounded text-muted hover:text-foreground"
+                  title={`Sort: ${tagSort} (click to cycle)`}
+                >{tagSort === "count" ? "#" : tagSort === "alpha" ? "A" : "✋"}</button>
                 <button onClick={(e) => { e.stopPropagation(); toggleExpandAll(); }}
                   className="text-[9px] px-1 py-0 rounded text-muted hover:text-foreground"
                   title={allTagsExpanded ? "Collapse all" : "Expand all"}
@@ -578,6 +687,10 @@ export default function Sidebar({
           <div className="px-3 py-1 flex items-center justify-between shrink-0 border-t border-border">
             <span className="text-[9px] uppercase tracking-wider text-muted font-medium">Custom Tags ({tags.length})</span>
             <div className="flex items-center gap-1">
+              <button onClick={() => { const modes: TagSortMode[] = ["count", "alpha", "custom"]; const next = modes[(modes.indexOf(tagSort) + 1) % modes.length]; setTagSort(next); localStorage.setItem("gm_tag_sort", JSON.stringify(next)); }}
+                className="text-[9px] px-1 py-0 rounded text-muted hover:text-foreground"
+                title={`Sort: ${tagSort} (click to cycle)`}
+              >{tagSort === "count" ? "#" : tagSort === "alpha" ? "A" : "✋"}</button>
               <button onClick={toggleExpandAll}
                 className="text-[9px] px-1 py-0 rounded text-muted hover:text-foreground"
                 title={allTagsExpanded ? "Collapse all" : "Expand all"}

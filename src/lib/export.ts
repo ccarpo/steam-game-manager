@@ -121,7 +121,7 @@ function colVal(row: GameRow, col: string): string {
     case "metacritic_score": return row.metacritic_score ? String(row.metacritic_score) : "";
     case "steam_genres": return esc(row.steam_genres === "[]" ? "" : row.steam_genres);
     case "steam_features": return esc(row.steam_features === "[]" ? "" : row.steam_features);
-    case "community_tags": return esc(row.community_tags === "[]" ? "" : row.community_tags);
+    case "community_tags": { const ct = row.community_tags; if (!ct || ct === "[]") return ""; try { const arr = JSON.parse(ct); if (arr.length > 0 && typeof arr[0] === "object") return esc(arr.map((t: { name: string }) => t.name).join(", ")); return esc(ct); } catch { return esc(ct); } }
     case "wishlist_date": return row.wishlist_date || "";
     case "steam_image_url": return esc(row.steam_image_url);
     default: return "";

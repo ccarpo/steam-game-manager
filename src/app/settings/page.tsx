@@ -61,7 +61,7 @@ export default function SettingsPage() {
   return (
     <div className="fixed inset-0 overflow-y-auto bg-background text-foreground">
       <div className="p-8 max-w-2xl mx-auto pb-16">
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex items-center gap-4 mb-4">
           <Link href="/" className="text-accent hover:underline text-sm">&larr; Back</Link>
           <h1 className="text-lg font-semibold">Settings</h1>
           {saving && <span className="text-xs text-muted animate-pulse">Saving...</span>}
@@ -69,27 +69,23 @@ export default function SettingsPage() {
             {lanIps.length > 0 && <>LAN: {lanIps.map((ip) => <a key={ip} href={`http://${ip}:3000`} target="_blank" rel="noopener noreferrer" className="text-accent ml-1 hover:underline">{ip}:3000</a>)}</>}
           </div>
         </div>
-        <div className="space-y-6">
-          {/* Steam Credentials */}
-          <div className="bg-surface rounded-lg p-4 border border-border">
-            <h2 className="text-sm font-medium mb-3">Steam Account</h2>
-            <p className="text-xs text-muted mb-3">Required for syncing your wishlist and owned games. Get your API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">steamcommunity.com/dev/apikey</a>.</p>
-            <div className="flex gap-4">
-              <label className="flex-1"><span className="text-xs text-muted">Steam ID</span>
-                <input type="text" value={settings.steam_id || ""} onChange={(e) => update("steam_id", e.target.value)}
-                  placeholder="76561198000000000"
-                  className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent font-mono" />
-              </label>
-              <label className="flex-1"><span className="text-xs text-muted">API Key</span>
-                <input type="password" value={settings.steam_api_key || ""} onChange={(e) => update("steam_api_key", e.target.value)}
-                  placeholder="Your Steam Web API key"
-                  className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent font-mono" />
-              </label>
-            </div>
-            {(!settings.steam_id || !settings.steam_api_key) && (
-              <p className="text-[10px] text-amber-400 mt-2">⚠ Configure both fields to enable wishlist and owned games sync.</p>
-            )}
-          </div>
+        {/* Quick nav */}
+        <div className="flex flex-wrap gap-1.5 mb-6 sticky top-0 z-10 bg-background py-2 border-b border-border/50">
+          {[
+            { id: "steam", label: "🔑 Steam" }, { id: "media", label: "📷 Media" },
+            { id: "score", label: "🎨 Score" }, { id: "cards", label: "🃏 Cards" },
+            { id: "clipboard", label: "📋 Clipboard" }, { id: "csv", label: "📊 CSV" },
+            { id: "database", label: "🗄️ Database" }, { id: "recommendation", label: "🎯 Rec" },
+            { id: "prefs", label: "🎨 Prefs" }, { id: "log", label: "📝 Log" }, { id: "tags", label: "🏷️ Tags" },
+          ].map(s => (
+            <button key={s.id} onClick={() => {
+              const el = document.getElementById(`section-${s.id}`);
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+              className="px-2 py-0.5 rounded text-[10px] border border-border text-muted hover:text-foreground hover:border-accent transition-colors">{s.label}</button>
+          ))}
+        </div>
+        <div className="space-y-6 [&>*[id]]:scroll-mt-20">
           {/* Screenshot Quality */}
           <div className="bg-surface rounded-lg p-4 border border-border">
             <h2 className="text-sm font-medium mb-3">Screenshot Quality</h2>
@@ -105,7 +101,26 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* Media Limits */}
-          <div className="bg-surface rounded-lg p-4 border border-border">
+          {/* Steam Credentials */}
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-steam">
+            <h2 className="text-sm font-medium mb-3">Steam Credentials</h2>
+            <div className="flex gap-4 mb-2">
+              <label className="flex-1"><span className="text-xs text-muted">Steam ID</span>
+                <input type="text" value={settings.steam_id || ""} onChange={(e) => update("steam_id", e.target.value)}
+                  className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+              </label>
+              <label className="flex-1"><span className="text-xs text-muted">API Key</span>
+                <input type="password" value={settings.steam_api_key || ""} onChange={(e) => update("steam_api_key", e.target.value)}
+                  className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+              </label>
+            </div>
+            {(!settings.steam_id || !settings.steam_api_key) && (
+              <p className="text-[10px] text-yellow-400">Set your Steam ID and API key to enable wishlist/owned sync. Get your API key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" className="underline">steamcommunity.com/dev/apikey</a></p>
+            )}
+          </div>
+
+          {/* Media Limits */}
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-media">
             <h2 className="text-sm font-medium mb-3">Media Limits</h2>
             <p className="text-xs text-muted mb-3">Max screenshots and movies to download per game.</p>
             <div className="flex gap-4 mb-3">
@@ -176,9 +191,9 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* Score & Color Coding */}
-          <ColorCodingSettings settings={settings} onUpdate={update} />
+          <div id="section-score"><ColorCodingSettings settings={settings} onUpdate={update} /></div>
           {/* Card View */}
-          <div className="bg-surface rounded-lg p-4 border border-border">
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-cards">
             <h2 className="text-sm font-medium mb-3">Card View</h2>
             <p className="text-xs text-muted mb-3">Controls what's shown on game cards in grid view.</p>
             <div className="flex gap-4">
@@ -204,7 +219,7 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* Clipboard Matching */}
-          <div className="bg-surface rounded-lg p-4 border border-border">
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-clipboard">
             <h2 className="text-sm font-medium mb-3">Clipboard Matching</h2>
             <p className="text-xs text-muted mb-3">Controls how the clipboard search matches game names.</p>
             <div className="flex gap-4">
@@ -243,8 +258,28 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* CSV Export Columns */}
-          <CsvColumnsConfig settings={settings} onUpdate={update} />
+          <div id="section-csv"><CsvColumnsConfig settings={settings} onUpdate={update} /></div>
           {/* Bookmarklet */}
+          <div className="bg-surface rounded-lg p-4 border border-border">
+            <h2 className="text-sm font-medium mb-3">Game Scroller</h2>
+            <p className="text-xs text-muted mb-3">Copy the script and paste in browser console. Press <code className="bg-background px-1 rounded">Z</code> to scroll + copy game name, <code className="bg-background px-1 rounded">Shift+Z</code> to go back.</p>
+            <div className="flex gap-3 items-center">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/game-scroller.js");
+                    const src = await res.text();
+                    await navigator.clipboard.writeText(src);
+                    alert("Script copied to clipboard! Paste in browser console.");
+                  } catch { alert("Failed to copy"); }
+                }}
+                className="px-4 py-2 rounded-lg bg-accent/20 border border-accent text-accent text-sm font-medium hover:bg-accent/30">
+                📋 Copy Script
+              </button>
+              <a href="/game-scroller.js" target="_blank" rel="noopener noreferrer"
+                className="text-[10px] text-muted hover:text-accent hover:underline">View source</a>
+            </div>
+          </div>
           {/* Steam Sync */}
           <div className="bg-surface rounded-lg p-4 border border-border">
             <h2 className="text-sm font-medium mb-3">Steam Sync</h2>
@@ -371,7 +406,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Database */}
-          <div className="bg-surface rounded-lg border border-border p-4">
+          <div className="bg-surface rounded-lg border border-border p-4" id="section-database">
             <h2 className="text-sm font-semibold mb-3">🗄️ Database</h2>
             <p className="text-xs text-muted mb-3">Re-run DB init: column migrations + asset count sync. Nothing is deleted.</p>
             <button
@@ -399,16 +434,16 @@ export default function SettingsPage() {
             >🔗 Recalculate Similarities</button>
             <button
               onClick={async () => {
-                appendLog("Generating release year tags...");
+                appendLog("Generating auto-tags (release year, sentiment, score)...");
                 try {
-                  const res = await fetch("/api/sync/release-tags", { method: "POST" });
+                  const res = await fetch("/api/sync/auto-tags", { method: "POST" });
                   const data = await res.json();
-                  if (data.ok) appendLog(`Release tags: ${data.years} years, ${data.assigned} games tagged.`);
+                  if (data.ok) appendLog(`Auto-tags: release=${data.release}, sentiment=${data.sentiment}, score=${data.score}`);
                   else appendLog("Error: " + JSON.stringify(data));
                 } catch (err) { appendLog(`Error: ${err}`); }
               }}
               className="ml-2 px-3 py-1.5 rounded text-xs border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 transition-colors"
-            >📅 Release Year Tags</button>
+            >🏷️ Auto Tags</button>
             <button
               onClick={async () => {
                 appendLog("Refreshing TBA/upcoming release dates...");
@@ -474,11 +509,30 @@ export default function SettingsPage() {
             </label>
           </div>
 
+          {/* Recommendation Weights */}
+          <RecWeightsConfig settings={settings} onUpdate={update} appendLog={appendLog} />
+
+          {/* UI Preferences */}
+          <div className="bg-surface rounded-lg border border-border p-4" id="section-prefs">
+            <h2 className="text-sm font-semibold mb-3">🎨 UI Preferences</h2>
+            <p className="text-xs text-muted mb-3">UI prefs (view, columns, sidebar) are saved to both browser and DB. In incognito, prefs load from DB.</p>
+            <button
+              onClick={() => {
+                if (!confirm("Reset all UI preferences (view, columns, sidebar, filters) to defaults?")) return;
+                localStorage.clear();
+                fetch("/api/prefs", { method: "DELETE" }).then(() => {
+                  appendLog("UI preferences reset. Reload the page.");
+                });
+              }}
+              className="px-3 py-1.5 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors"
+            >🗑 Reset UI Preferences</button>
+          </div>
+
           {/* System Log */}
-          <SystemLog />
+          <div id="section-log"><SystemLog /></div>
 
           {/* Tag & Subtag Management */}
-          <TagManager />
+          <div id="section-tags"><TagManager /></div>
         </div>
       </div>
     </div>
@@ -702,6 +756,314 @@ function CsvColumnsConfig({ settings, onUpdate }: { settings: Record<string, str
   );
 }
 
+/** Inline subtag autocomplete input */
+function SubtagInput({ allSubtags, onSelect, placeholder = "tag > subtag..." }: {
+  allSubtags: { tag: string; subtag: string }[];
+  onSelect: (subtag: string) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const q = query.toLowerCase().replace(/\s*[>›]\s*/g, ">");
+  const filtered = q.length > 0 ? allSubtags.filter(s => {
+    const full = `${s.tag}>${s.subtag}`.toLowerCase();
+    return s.subtag.toLowerCase().includes(q) || s.tag.toLowerCase().includes(q) || full.includes(q);
+  }).slice(0, 12) : [];
+
+  return (
+    <div className="relative inline-block">
+      <input type="text" value={query} onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => { if (e.key === "Enter" && query.trim()) { onSelect(query.trim()); setQuery(""); setOpen(false); } }}
+        placeholder={placeholder} className="w-32 bg-background border border-border rounded px-1.5 py-0.5 text-[10px]" />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 mt-0.5 bg-surface border border-border rounded shadow-lg max-h-32 overflow-y-auto w-48">
+          {filtered.map((s, i) => (
+            <button key={i} className="w-full text-left px-2 py-0.5 text-[10px] hover:bg-surface2/50 flex gap-1"
+              onMouseDown={(e) => { e.preventDefault(); onSelect(`${s.tag}>${s.subtag}`); setQuery(""); setOpen(false); }}>
+              <span className="text-muted">{s.tag} ›</span> <span>{s.subtag}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<string, string>; onUpdate: (k: string, v: string) => void; appendLog: (msg: string) => void }) {
+  const defaultWeights = { genreMatch: 25, devMatch: 5, ctagMatch: 20, score: 20, maturity: 15, waiting: 15, priority: 20 };
+  const [weights, setWeights] = useState(() => {
+    try { return { ...defaultWeights, ...JSON.parse(settings.rec_weights || "{}") }; } catch { return defaultWeights; }
+  });
+  const [ctagMode, setCtagMode] = useState(settings.rec_ctag_mode || "count");
+  const [sweetSpot, setSweetSpot] = useState(() => {
+    try { return JSON.parse(settings.rec_sweet_spot || '{"min":70,"max":85}'); } catch { return { min: 70, max: 85 }; }
+  });
+  const [useAllRated, setUseAllRated] = useState(settings.rec_use_all_rated === "1");
+  const [showInfo, setShowInfo] = useState(false);
+
+  // Load all subtags + genres/community tags for autocomplete
+  const [allSubtags, setAllSubtags] = useState<{ tag: string; subtag: string }[]>([]);
+  const [allGenreNames, setAllGenreNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/subtags").then(r => r.json()).then((subs: { tag_id: number; name: string }[]) => {
+      fetch("/api/tags").then(r => r.json()).then((tags: { id: number; name: string }[]) => {
+        const tagMap = new Map(tags.map(t => [t.id, t.name]));
+        setAllSubtags(subs.map(s => ({ tag: tagMap.get(s.tag_id) || "?", subtag: s.name })));
+      });
+    });
+    fetch("/api/genres").then(r => r.json()).then((data: { genres: { name: string }[]; communityTags: { name: string }[] }) => {
+      const names = [...new Set([...data.genres.map(g => g.name), ...data.communityTags.map(t => t.name)])];
+      setAllGenreNames(names.sort());
+    }).catch(() => {});
+  }, []);
+
+  // Three categories: played (training), priority (boost), exclude (hidden)
+  const [played, setPlayed] = useState<string[]>(() => {
+    try { return JSON.parse(settings.rec_played || '["done","played_elsewhere"]'); } catch { return ["done", "played_elsewhere"]; }
+  });
+  const [priority, setPriority] = useState<{ subtag: string; boost: number }[]>(() => {
+    try { return JSON.parse(settings.rec_priority || '[{"subtag":"next","boost":30},{"subtag":"franchise","boost":20}]'); } catch { return [{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]; }
+  });
+  const [excludes, setExcludes] = useState<string[]>(() => {
+    try { return JSON.parse(settings.rec_exclude || '["hide","not_my_type"]'); } catch { return ["hide", "not_my_type"]; }
+  });
+
+  const [newPrioBoost, setNewPrioBoost] = useState(20);
+  const [profileData, setProfileData] = useState<{ playedCount: number; genres: { name: string; weight: number }[]; devs: { name: string; weight: number }[]; ctags: { name: string; weight: number }[] } | null>(null);
+  const [genrePrefs, setGenrePrefs] = useState<{ tag: string; value: number }[]>(() => {
+    try { return JSON.parse(settings.rec_genre_prefs || "[]"); } catch { return []; }
+  });
+  const [newGenrePrefTag, setNewGenrePrefTag] = useState("");
+  const [newGenrePrefValue, setNewGenrePrefValue] = useState(50);
+
+  const save = () => {
+    onUpdate("rec_weights", JSON.stringify(weights));
+    onUpdate("rec_ctag_mode", ctagMode);
+    onUpdate("rec_sweet_spot", JSON.stringify(sweetSpot));
+    onUpdate("rec_use_all_rated", useAllRated ? "1" : "0");
+    onUpdate("rec_genre_prefs", JSON.stringify(genrePrefs));
+    onUpdate("rec_played", JSON.stringify(played));
+    onUpdate("rec_priority", JSON.stringify(priority));
+    onUpdate("rec_exclude", JSON.stringify(excludes));
+    appendLog("Recommendation config saved.");
+  };
+
+  const reset = () => {
+    setWeights(defaultWeights);
+    setCtagMode("count");
+    setSweetSpot({ min: 70, max: 85 });
+    setUseAllRated(false);
+    setGenrePrefs([]);
+    setPlayed(["done", "played_elsewhere"]);
+    setPriority([{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]);
+    setExcludes(["hide", "not_my_type"]);
+  };
+
+  const chipClass = (color: string) => `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border`;
+
+  return (
+    <div className="bg-surface rounded-lg p-4 border border-border" id="section-recommendation">
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-sm font-semibold">🎯 Recommendation Config</h2>
+        <button onClick={() => setShowInfo(!showInfo)} className="text-[10px] text-muted hover:text-foreground border border-border rounded-full w-4 h-4 flex items-center justify-center" title="How scoring works">i</button>
+      </div>
+
+      {showInfo && (
+        <div className="bg-background rounded border border-border p-3 mb-3 text-[11px] text-muted space-y-1">
+          <p><span className="text-cyan-400">📚 Played</span> — Games with these subtags are your training data. Their genres, developers, and community tags build your preference profile.</p>
+          <p><span className="text-green-400">⭐ Priority</span> — Games with these subtags get a score boost. Higher boost = stronger push to the top. Use for tags like &quot;next&quot; or &quot;franchise&quot;.</p>
+          <p><span className="text-red-400">🚫 Exclude</span> — Games with these subtags are completely hidden from recommendations. Not scored, not shown.</p>
+          <p className="pt-1 border-t border-border/50"><span className="text-foreground">Scoring:</span> Each game gets a 0–1 score from 7 signals: genre match, dev/pub match, community tag match, score quality (configurable sweet spot), release maturity, waiting time, and priority boost. Weights are normalized — enter any numbers.</p>
+          <p><span className="text-foreground">User Rating:</span> Rate played games 1–10 in the Edit Modal. Higher-rated games contribute more to your preference profile (rating 10 = full weight, 5 = half, unrated = 0.5 neutral). Rate your favorite metroidvanias 9–10 and they&apos;ll dominate your profile.</p>
+        </div>
+      )}
+
+      {/* Signal weights */}
+      {(() => { const total = Object.values(weights as Record<string, number>).reduce((a, b) => a + b, 0); return <p className="text-[10px] text-muted mb-2">Signal weights (total: {total} — remaining from 100: {Math.max(0, 100 - total)})</p>; })()}
+      <div className="grid grid-cols-7 gap-2 mb-1">
+        {(["genreMatch", "devMatch", "ctagMatch", "score", "maturity", "waiting", "priority"] as const).map(k => (
+          <label key={k} className="text-center">
+            <span className="text-[10px] text-muted block">{
+              { genreMatch: "Genres", devMatch: "Dev/Pub", ctagMatch: "Comm Tags", score: "Score", maturity: "Maturity", waiting: "Waiting", priority: "Priority" }[k]
+            }</span>
+            <input type="number" min={0} value={weights[k]} onChange={(e) => setWeights({ ...weights, [k]: Number(e.target.value) || 0 })}
+              className="w-full bg-background border border-border rounded px-2 py-1 text-sm text-center" />
+          </label>
+        ))}
+      </div>
+      <button onClick={() => setWeights({ genreMatch: 0, devMatch: 0, ctagMatch: 0, score: 0, maturity: 0, waiting: 0, priority: 0 })}
+        className="text-[9px] text-muted hover:text-foreground mb-4">Reset all to 0</button>
+
+      <div className="flex items-center gap-4 mb-4">
+        <label className="text-xs text-muted flex items-center gap-1.5">
+          Community tag mode:
+          <select value={ctagMode} onChange={(e) => setCtagMode(e.target.value)}
+            className="bg-background border border-border rounded px-2 py-0.5 text-xs">
+            <option value="count">By count (popular = stronger)</option>
+            <option value="inverse">Inverse (rare = distinctive)</option>
+          </select>
+        </label>
+        <label className="text-xs text-muted flex items-center gap-1.5">
+          Score sweet spot:
+          <input type="number" min={0} max={100} value={sweetSpot.min} onChange={(e) => setSweetSpot({ ...sweetSpot, min: Number(e.target.value) })}
+            className="w-12 bg-background border border-border rounded px-1 py-0.5 text-xs text-center" />
+          –
+          <input type="number" min={0} max={100} value={sweetSpot.max} onChange={(e) => setSweetSpot({ ...sweetSpot, max: Number(e.target.value) })}
+            className="w-12 bg-background border border-border rounded px-1 py-0.5 text-xs text-center" />
+          %
+        </label>
+        <label className="text-xs text-muted flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={useAllRated} onChange={(e) => setUseAllRated(e.target.checked)} className="accent-accent" />
+          Include all user-rated games in training
+        </label>
+      </div>
+
+      {/* Three categories */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {/* Played (training data) */}
+        <div>
+          <span className="text-[10px] text-cyan-400 font-medium block mb-1">📚 Played (training data)</span>
+          <span className="text-[9px] text-muted block mb-1">Games with these subtags teach the algorithm your preferences</span>
+          <div className="flex flex-wrap gap-1">
+            {played.map(s => (
+              <span key={s} className={chipClass("cyan")} style={{ backgroundColor: "rgba(6,182,212,0.1)", borderColor: "rgba(6,182,212,0.3)", color: "#06b6d4" }}>
+                {s} <button onClick={() => setPlayed(played.filter(x => x !== s))} className="font-bold">×</button>
+              </span>
+            ))}
+            <SubtagInput allSubtags={allSubtags} onSelect={(s) => { if (!played.includes(s)) setPlayed([...played, s]); }} />
+          </div>
+        </div>
+
+        {/* Priority (boost) */}
+        <div>
+          <span className="text-[10px] text-green-400 font-medium block mb-1">⭐ Priority (boost)</span>
+          <span className="text-[9px] text-muted block mb-1">Games with these subtags get a score boost</span>
+          <div className="flex flex-wrap gap-1">
+            {priority.map((p, i) => (
+              <span key={p.subtag} className={chipClass("green")} style={{ backgroundColor: "rgba(34,197,94,0.1)", borderColor: "rgba(34,197,94,0.3)", color: "#22c55e" }}>
+                {p.subtag} (+{p.boost}) <button onClick={() => setPriority(priority.filter((_, j) => j !== i))} className="font-bold">×</button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-1 mt-1 items-center">
+            <SubtagInput allSubtags={allSubtags} onSelect={(s) => { if (!priority.some(p => p.subtag === s)) setPriority([...priority, { subtag: s, boost: newPrioBoost }]); }} placeholder="tag > subtag..." />
+            <span className="text-[9px] text-muted">boost:</span>
+            <input type="number" value={newPrioBoost} onChange={(e) => setNewPrioBoost(Number(e.target.value))} className="w-10 bg-background border border-border rounded px-1 py-0.5 text-[10px] text-center" />
+          </div>
+        </div>
+
+        {/* Exclude (hidden) */}
+        <div>
+          <span className="text-[10px] text-red-400 font-medium block mb-1">🚫 Exclude (hidden)</span>
+          <span className="text-[9px] text-muted block mb-1">Games with these subtags are completely hidden from recommendations</span>
+          <div className="flex flex-wrap gap-1">
+            {excludes.map(s => (
+              <span key={s} className={chipClass("red")} style={{ backgroundColor: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.3)", color: "#ef4444" }}>
+                {s} <button onClick={() => setExcludes(excludes.filter(x => x !== s))} className="font-bold">×</button>
+              </span>
+            ))}
+            <SubtagInput allSubtags={allSubtags} onSelect={(s) => { if (!excludes.includes(s)) setExcludes([...excludes, s]); }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Genre Preferences (boost/penalty) */}
+      <div className="mb-4">
+        <span className="text-[10px] text-amber-400 font-medium block mb-1">🎮 Genre Preferences (boost/penalty)</span>
+        <span className="text-[9px] text-muted block mb-1">Add genres or community tags with positive (boost) or negative (penalty) values. These directly adjust your profile.</span>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {genrePrefs.map((p, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border"
+              style={{ backgroundColor: p.value > 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                borderColor: p.value > 0 ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
+                color: p.value > 0 ? "#22c55e" : "#ef4444" }}>
+              {p.tag} ({p.value > 0 ? "+" : ""}{p.value})
+              <button onClick={() => setGenrePrefs(genrePrefs.filter((_, j) => j !== i))} className="font-bold">×</button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1 items-center relative">
+          <div className="relative">
+            <input type="text" value={newGenrePrefTag} onChange={(e) => setNewGenrePrefTag(e.target.value)}
+              placeholder="e.g. Metroidvania" className="w-40 bg-background border border-border rounded px-1.5 py-0.5 text-[10px]" />
+            {newGenrePrefTag.length > 0 && (() => {
+              const q = newGenrePrefTag.toLowerCase();
+              const matches = allGenreNames.filter(n => n.toLowerCase().includes(q)).slice(0, 10);
+              if (matches.length === 0) return null;
+              return (
+                <div className="absolute z-50 top-full left-0 mt-0.5 bg-surface border border-border rounded shadow-lg max-h-32 overflow-y-auto w-48">
+                  {matches.map(name => (
+                    <button key={name} className="w-full text-left px-2 py-0.5 text-[10px] hover:bg-surface2/50"
+                      onMouseDown={(e) => { e.preventDefault(); setNewGenrePrefTag(name); }}>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+          <input type="number" value={newGenrePrefValue} onChange={(e) => setNewGenrePrefValue(Number(e.target.value))}
+            className="w-14 bg-background border border-border rounded px-1 py-0.5 text-[10px] text-center" />
+          <button onClick={() => {
+            if (newGenrePrefTag.trim()) {
+              setGenrePrefs([...genrePrefs, { tag: newGenrePrefTag.trim(), value: newGenrePrefValue }]);
+              setNewGenrePrefTag("");
+            }
+          }} className="text-[10px] text-amber-400 hover:underline">+ Add</button>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={save} className="px-3 py-1.5 rounded text-xs border border-accent/50 text-accent hover:bg-accent/10">💾 Save</button>
+        <button onClick={reset} className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground">↺ Reset defaults</button>
+        <button onClick={async () => {
+          appendLog("Recalculating recommendation scores...");
+          const res = await fetch("/api/play-next");
+          const data = await res.json();
+          appendLog(`Scored ${data.games?.length || 0} games. Profile: ${data.profile?.playedCount || 0} played.`);
+        }} className="px-3 py-1.5 rounded text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10">🔄 Recalculate</button>
+        <button onClick={async () => {
+          const res = await fetch("/api/play-next");
+          const data = await res.json();
+          setProfileData(data.profile);
+        }} className="px-3 py-1.5 rounded text-xs border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10">👤 View Profile</button>
+      </div>
+      {profileData && (
+        <div className="mt-3 bg-background rounded border border-border p-3 text-[11px] space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-cyan-400 font-medium">Your Preference Profile ({profileData.playedCount} played games)</span>
+            <button onClick={() => setProfileData(null)} className="text-muted text-[9px]">✕</button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 max-h-48 overflow-y-auto">
+            <div>
+              <span className="text-muted block mb-1">Genres</span>
+              {profileData.genres?.map((g: { name: string; weight: number }) => (
+                <div key={g.name} className="flex justify-between"><span>{g.name}</span><span className="text-green-400">{g.weight}%</span></div>
+              ))}
+            </div>
+            <div>
+              <span className="text-muted block mb-1">Developers</span>
+              {profileData.devs?.map((d: { name: string; weight: number }) => (
+                <div key={d.name} className="flex justify-between"><span className="truncate">{d.name}</span><span className="text-purple-400">{d.weight}%</span></div>
+              ))}
+            </div>
+            <div>
+              <span className="text-muted block mb-1">Community Tags</span>
+              {profileData.ctags?.map((t: { name: string; weight: number }) => (
+                <div key={t.name} className="flex justify-between"><span>{t.name}</span><span className="text-cyan-400">{t.weight}%</span></div>
+              ))}
+            </div>
+          </div>
+          <p className="text-[9px] text-muted pt-1 border-t border-border/50">
+            Games are scored against this profile. Genre/dev/community tag match = how similar a candidate is to your played games. Score quality favors 70-85%. Maturity favors older releases. Waiting nudges games sitting in your library.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SystemLog() {
   const [logs, setLogs] = useState<{ ts: string; level: string; msg: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -713,7 +1075,7 @@ function SystemLog() {
   useEffect(() => { refresh(); }, [refresh]);
 
   const levelColor: Record<string, string> = {
-    ERROR: "text-red-400", SYSTEM: "text-cyan-400", INFO: "text-blue-400", DEBUG: "text-gray-500",
+    ERROR: "text-red-400", SYSTEM: "text-cyan-400", INFO: "text-blue-400", DEBUG: "text-gray-500", AUDIT: "text-amber-400",
   };
 
   return (
@@ -808,13 +1170,20 @@ function TagManager() {
       ) : (
         <button onClick={() => setShowNewTag(true)} className="mb-3 px-3 py-1 rounded text-xs border border-border text-muted hover:text-foreground hover:border-accent transition-colors">+ New Tag</button>
       )}
+      {/* Tag sidebar order */}
       <div className="space-y-1">
-        {tags.map((tag) => {
+        {tags.map((tag, tagIdx) => {
           const tagSubs = subtags.filter((s) => s.tag_id === tag.id);
           const isExpanded = expanded.has(tag.id);
           return (
             <div key={tag.id}>
               <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface2/30">
+                <div className="flex flex-col shrink-0">
+                  <button disabled={tagIdx === 0} onClick={() => { const arr = [...tags]; [arr[tagIdx-1], arr[tagIdx]] = [arr[tagIdx], arr[tagIdx-1]]; setTags(arr); }}
+                    className="text-[7px] text-muted hover:text-foreground disabled:opacity-20 leading-none">▲</button>
+                  <button disabled={tagIdx === tags.length - 1} onClick={() => { const arr = [...tags]; [arr[tagIdx], arr[tagIdx+1]] = [arr[tagIdx+1], arr[tagIdx]]; setTags(arr); }}
+                    className="text-[7px] text-muted hover:text-foreground disabled:opacity-20 leading-none">▼</button>
+                </div>
                 {editingTag === tag.id ? (
                   <>
                     <input type="color" value={editTagColor} onChange={(e) => setEditTagColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
@@ -867,6 +1236,11 @@ function TagManager() {
           );
         })}
       </div>
+      <button onClick={() => {
+        const order = tags.map(t => t.id);
+        localStorage.setItem("gm_tag_order", JSON.stringify(order));
+        fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "tag_order", value: JSON.stringify(order) }) });
+      }} className="mt-2 text-[10px] text-accent hover:underline">💾 Save sidebar order</button>
     </div>
   );
 }

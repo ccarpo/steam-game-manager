@@ -7,7 +7,9 @@ function safeJsonParse(str: string | null | undefined): string[] {
   if (!str) return [];
   try {
     const parsed = JSON.parse(str);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0].name) return parsed.map((t: { name: string }) => t.name);
+    return parsed;
   } catch {
     return [];
   }
@@ -43,9 +45,10 @@ interface Props {
   colorCoded?: boolean;
   scoreSource?: "steam" | "steamdb";
   tintColors?: TintColors | null;
+  recScore?: number | null;
 }
 
-export default function GameCard({ game, selected, slideshow, slideDelay = 1000, pageFocused = true, defaultImage = "header", genresCount = 3, communityTagsCount = 4, onClick, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onCommunityTagFilter, colorCoded, scoreSource = "steamdb", tintColors }: Props) {
+export default function GameCard({ game, selected, slideshow, slideDelay = 1000, pageFocused = true, defaultImage = "header", genresCount = 3, communityTagsCount = 4, onClick, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onCommunityTagFilter, colorCoded, scoreSource = "steamdb", tintColors, recScore }: Props) {
   const [imgState, setImgState] = useState<"loading" | "loaded" | "error">("loading");
   const [hovered, setHovered] = useState(false);
   const [ssIdx, setSsIdx] = useState(-1);
@@ -181,6 +184,16 @@ export default function GameCard({ game, selected, slideshow, slideDelay = 1000,
             }}
           >
             {primaryScore}{scoreSource === "steam" ? "%" : ""}
+          </div>
+        )}
+        {game.queue_position != null && (
+          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-600/90 text-white">
+            #{game.queue_position}
+          </div>
+        )}
+        {recScore != null && recScore > 0 && (
+          <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-cyan-600/80 text-white">
+            🎯{Math.round(recScore * 100)}
           </div>
         )}
       </div>

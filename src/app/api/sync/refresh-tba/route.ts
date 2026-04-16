@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { assignReleaseYearTag } from "@/lib/release-tag";
+import { assignAllAutoTags } from "@/lib/auto-tags";
 import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +76,7 @@ export async function POST() {
                 WHERE id = ?
               `).run(name, desc, newDate, JSON.stringify(genres), JSON.stringify(feats), devs, pubs, mc, g.id);
 
-              assignReleaseYearTag(db, g.id, newDate);
+              assignAllAutoTags(db, g.id, { releaseDate: newDate });
               updated++;
               send({ type: "progress", current: i + 1, total: games.length, name: g.name, oldDate, newDate });
             } else {

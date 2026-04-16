@@ -21,11 +21,23 @@ async function fetchStorePage(appid: number): Promise<string | null> {
   } catch { return null; }
 }
 
-function parseCommunityTags(html: string): string[] {
+function parseCommunityTags(html: string): { name: string; count: number }[] {
   const m = html.match(/InitAppTagModal\(\s*\d+,\s*(\[[\s\S]*?\]),/);
   if (!m) return [];
   try {
-    return (JSON.parse(m[1]) as { name: string }[]).slice(0, 20).map((t) => t.name);
+    return (JSON.parse(m[1]) as { name: string; count?: number }[]).slice(0, 20).map((t) => ({ name: t.name, count: t.count || 0 }));
+  } catch { return []; }
+}
+
+/** Extract just tag names from community_tags field (handles both old string[] and new {name,count}[] formats) */
+function extractTagNames(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return [];
+    if (arr.length === 0) return [];
+    if (typeof arr[0] === "string") return arr;
+    return arr.map((t: { name: string }) => t.name);
   } catch { return []; }
 }
 
@@ -181,6 +193,9 @@ export async function POST(req: Request) {
               }
 
               await Promise.all(fetches);
+              // Immediately update game row from cache
+              const freshCache = cacheMap.get(appid);
+              if (freshCache) rebuildOneGame(db, g.id, appid, freshCache, maxSS, maxMov);
               return g;
             }));
 
@@ -272,6 +287,9 @@ export async function POST(req: Request) {
                   const ctags = html ? parseCommunityTags(html) : [];
                   upsertCacheCol(db, cacheMap, appid, "store_page_tags", JSON.stringify(ctags));
                 }
+                // Immediately update game row from cache
+                const freshCache = cacheMap.get(appid);
+                if (freshCache) rebuildOneGame(db, g.id, appid, freshCache, maxSS, maxMov);
                 return g;
               }));
 
@@ -343,78 +361,80 @@ function upsertCacheCol(
   }
 }
 
+/** Update a single game's row from its cached data */
+function rebuildOneGame(
+  db: ReturnType<typeof getDb>,
+  gameId: number, appid: number,
+  cached: CacheRow,
+  maxSS: number, maxMov: number,
+) {
+  let steamName: string | null = null;
+  let desc = "", genres: string[] = [], feats: string[] = [], devs = "", pubs = "";
+  let relDate = "", mc = 0, ss: string[] = [];
+  let ctags: unknown[] = [];
+  let movies: { name: string; thumbnail_url: string; video_url: string }[] = [];
+  let totalSS = 0, totalMov = 0;
+
+  if (cached.appdetails) {
+    try {
+      const dd = JSON.parse(cached.appdetails) as Record<string, { success: boolean; data?: Record<string, unknown> }>;
+      if (dd?.[String(appid)]?.success) {
+        const d = dd[String(appid)].data!;
+        steamName = (d.name as string) || null;
+        desc = (d.short_description as string) || "";
+        genres = ((d.genres as { description: string }[]) || []).map((x) => x.description);
+        feats = ((d.categories as { description: string }[]) || []).map((x) => x.description);
+        devs = JSON.stringify((d.developers as string[]) || []);
+        pubs = JSON.stringify((d.publishers as string[]) || []);
+        relDate = (d.release_date as { date?: string })?.date || "";
+        mc = (d.metacritic as { score?: number })?.score || 0;
+        const allSS = (d.screenshots as { path_full: string }[]) || [];
+        ss = allSS.slice(0, maxSS).map((x) => x.path_full);
+        totalSS = ss.length;
+        const allMov = (d.movies as { name: string; thumbnail: string; hls_h264?: string; mp4?: { max?: string }; webm?: { max?: string } }[]) || [];
+        movies = allMov.slice(0, maxMov).map((m) => ({
+          name: m.name || "Trailer", thumbnail_url: m.thumbnail || "",
+          video_url: m.hls_h264 || m.mp4?.max || m.webm?.max || "",
+        }));
+        totalMov = movies.length;
+      }
+    } catch {}
+  }
+
+  let sent = "", pct = 0, total = 0;
+  if (cached.reviews) {
+    try {
+      const rv = JSON.parse(cached.reviews) as { query_summary?: { review_score_desc: string; total_positive: number; total_negative: number } };
+      if (rv?.query_summary) {
+        sent = rv.query_summary.review_score_desc || "";
+        total = rv.query_summary.total_positive + rv.query_summary.total_negative;
+        pct = total > 0 ? Math.round((rv.query_summary.total_positive / total) * 100) : 0;
+      }
+    } catch {}
+  }
+
+  if (cached.store_page_tags) {
+    try { ctags = JSON.parse(cached.store_page_tags); } catch {}
+  }
+
+  db.prepare(`UPDATE games SET name = COALESCE(?, name), description = ?, steam_genres = ?, steam_features = ?, community_tags = ?,
+    developers = ?, publishers = ?, release_date = ?, review_sentiment = ?, positive_percent = ?, total_reviews = ?, metacritic_score = ?,
+    screenshots = ?, movies = ?, total_screenshots = ?, total_movies = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(steamName, desc, JSON.stringify(genres), JSON.stringify(feats), JSON.stringify(ctags),
+    devs, pubs, relDate, sent, pct, total, mc, JSON.stringify(ss), JSON.stringify(movies), totalSS, totalMov, gameId);
+}
+
 function rebuildFromCache(
   db: ReturnType<typeof getDb>,
   allGames: { id: number; name: string; steam_appid: number }[],
   cacheMap: Map<number, CacheRow>,
   maxSS: number, maxMov: number,
 ): number {
-  const updateGame = db.prepare(`
-    UPDATE games SET
-      name = COALESCE(?, name),
-      description = ?, steam_genres = ?, steam_features = ?, community_tags = ?,
-      developers = ?, publishers = ?, release_date = ?, review_sentiment = ?,
-      positive_percent = ?, total_reviews = ?, metacritic_score = ?,
-      screenshots = ?, movies = ?, total_screenshots = ?, total_movies = ?,
-      updated_at = datetime('now')
-    WHERE id = ?
-  `);
-
   let applied = 0;
   for (const g of allGames) {
     const cached = cacheMap.get(g.steam_appid);
     if (!cached) continue;
-
-    let steamName: string | null = null;
-    let desc = "", genres: string[] = [], feats: string[] = [], devs = "", pubs = "";
-    let relDate = "", mc = 0, ss: string[] = [], ctags: string[] = [];
-    let movies: { name: string; thumbnail_url: string; video_url: string }[] = [];
-    let totalSS = 0, totalMov = 0;
-
-    if (cached.appdetails) {
-      try {
-        const dd = JSON.parse(cached.appdetails) as Record<string, { success: boolean; data?: Record<string, unknown> }>;
-        if (dd?.[String(g.steam_appid)]?.success) {
-          const d = dd[String(g.steam_appid)].data!;
-          steamName = (d.name as string) || null;
-          desc = (d.short_description as string) || "";
-          genres = ((d.genres as { description: string }[]) || []).map((x) => x.description);
-          feats = ((d.categories as { description: string }[]) || []).map((x) => x.description);
-          devs = JSON.stringify((d.developers as string[]) || []);
-          pubs = JSON.stringify((d.publishers as string[]) || []);
-          relDate = (d.release_date as { date?: string })?.date || "";
-          mc = (d.metacritic as { score?: number })?.score || 0;
-          const allSS = (d.screenshots as { path_full: string }[]) || [];
-          ss = allSS.slice(0, maxSS).map((x) => x.path_full);
-          totalSS = ss.length;
-          const allMov = (d.movies as { name: string; thumbnail: string; hls_h264?: string; mp4?: { max?: string }; webm?: { max?: string } }[]) || [];
-          movies = allMov.slice(0, maxMov).map((m) => ({
-            name: m.name || "Trailer", thumbnail_url: m.thumbnail || "",
-            video_url: m.hls_h264 || m.mp4?.max || m.webm?.max || "",
-          }));
-          totalMov = movies.length;
-        }
-      } catch { /* ignore */ }
-    }
-
-    let sent = "", pct = 0, total = 0;
-    if (cached.reviews) {
-      try {
-        const rv = JSON.parse(cached.reviews) as { query_summary?: { review_score_desc: string; total_positive: number; total_negative: number } };
-        if (rv?.query_summary) {
-          sent = rv.query_summary.review_score_desc || "";
-          total = rv.query_summary.total_positive + rv.query_summary.total_negative;
-          pct = total > 0 ? Math.round((rv.query_summary.total_positive / total) * 100) : 0;
-        }
-      } catch { /* ignore */ }
-    }
-
-    if (cached.store_page_tags) {
-      try { ctags = JSON.parse(cached.store_page_tags); } catch { /* ignore */ }
-    }
-
-    updateGame.run(steamName, desc, JSON.stringify(genres), JSON.stringify(feats), JSON.stringify(ctags),
-      devs, pubs, relDate, sent, pct, total, mc, JSON.stringify(ss), JSON.stringify(movies), totalSS, totalMov, g.id);
+    rebuildOneGame(db, g.id, g.steam_appid, cached, maxSS, maxMov);
     applied++;
   }
   return applied;

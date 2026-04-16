@@ -43,9 +43,15 @@ export interface Filters {
   dir?: "asc" | "desc";
   untagged?: boolean;
   withNotes?: boolean;
+  withRating?: boolean;
   hideWishlistOnly?: boolean;
   filterMode?: "AND" | "OR";
   customTagMode?: "AND" | "OR";
+  scoreMin?: number;
+  scoreMax?: number;
+  reviewsMin?: number;
+  reviewsMax?: number;
+  minCommunityTags?: number;
 }
 
 export interface GenreInfo { name: string; count: number; }
@@ -110,13 +116,20 @@ export function useGenres() {
 // --- JSON parse helper ---
 function safeJsonParse(str: string | null | undefined): string[] {
   if (!str) return [];
-  try { const p = JSON.parse(str); return Array.isArray(p) ? p : []; } catch { return []; }
+  try {
+    const p = JSON.parse(str);
+    if (!Array.isArray(p)) return [];
+    if (p.length > 0 && typeof p[0] === "object" && p[0].name) return p.map((t: { name: string }) => t.name);
+    return p;
+  } catch { return []; }
 }
 
+/** Split developer/publisher string on commas, but not within company suffixes like "Co., Ltd." */
 /** Parse developer/publisher field — handles both JSON arrays and legacy comma-separated */
 function splitCompanies(s: string): string[] {
   if (!s) return [];
   if (s.startsWith("[")) return safeJsonParse(s);
+  // Legacy comma-separated fallback
   const protected_ = s.replace(/\b(Co|Inc|Ltd|Corp|S\.A|S\.L|LLC|GmbH)\.\s*,/gi, (_m, p1) => `${p1}.†`);
   return protected_.split(",").map(s => s.replace(/†/g, ",").trim()).filter(Boolean);
 }
@@ -244,6 +257,26 @@ function filterGames(allGames: GameWithTags[], filters: Filters): GameWithTags[]
     // With notes
     if (withNotes && !(game.notes && game.notes.trim())) return false;
 
+    // With rating filter
+    if (filters.withRating && game.user_rating == null) return false;
+
+    // Score range filter
+    if (filters.scoreMin !== undefined || filters.scoreMax !== undefined) {
+      const score = game.total_reviews > 0 ? steamDbScore(game.positive_percent, game.total_reviews) : 0;
+      if (filters.scoreMin !== undefined && score < filters.scoreMin) return false;
+      if (filters.scoreMax !== undefined && score > filters.scoreMax) return false;
+    }
+
+    // Review count filter
+    if (filters.reviewsMin !== undefined && (game.total_reviews || 0) < filters.reviewsMin) return false;
+    if (filters.reviewsMax !== undefined && (game.total_reviews || 0) > filters.reviewsMax) return false;
+
+    // Min community tags filter
+    if (filters.minCommunityTags !== undefined) {
+      const ctags = safeJsonParse(game.community_tags);
+      if (ctags.length < filters.minCommunityTags) return false;
+    }
+
     // Hide wishlist-only (games whose only L0 tag is "steam")
     if (hideWishlistOnly && gameTags.length > 0 && gameTags.every((t) => t.tag_name === "steam")) return false;
 
@@ -323,10 +356,13 @@ function parseReleaseDate(s: string): number {
   if (!s) return 0;
   const low = s.toLowerCase().trim();
   if (low === "coming soon" || low === "to be announced" || low === "tba") return 32503680000000; // year 3000
+  // "Q1 2026" etc
   const qm = low.match(/^q([1-4])\s+(\d{4})$/);
   if (qm) return new Date(Number(qm[2]), (Number(qm[1]) - 1) * 3, 1).getTime();
+  // Try native parse first (handles "Aug 14, 2020", "June 2026", "March 2026" etc)
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d.getTime();
+  // Try "DD Mon, YYYY" format (Steam's default)
   const m = s.match(/^(\d{1,2})\s+(\w+),?\s+(\d{4})$/);
   if (m) {
     const d2 = new Date(`${m[2]} ${m[1]}, ${m[3]}`);
@@ -423,6 +459,16 @@ function compareBySortKey(a: GameWithTags, b: GameWithTags, sort: string, d: num
       if (!av && !bv) return 0; if (!av) return 1; if (!bv) return -1;
       return d * (av - bv);
     }
+    case "curation": {
+      const av = a.queue_position, bv = b.queue_position;
+      if (av == null && bv == null) return 0; if (av == null) return 1; if (bv == null) return -1;
+      return d * (av - bv);
+    }
+    case "user_rating": {
+      const av = a.user_rating, bv = b.user_rating;
+      if (av == null && bv == null) return 0; if (av == null) return 1; if (bv == null) return -1;
+      return d * (av - bv);
+    }
     default: return d * a.name.localeCompare(b.name);
   }
 }
@@ -444,6 +490,7 @@ export function useGames() {
   const [allGames, setAllGames] = useState<GameWithTags[]>([]);
   const [loading, setLoading] = useState(true);
   const [shuffleSeed, setShuffleSeed] = useState<number | null>(null);
+  const [playNextScores, setPlayNextScores] = useState<Map<number, { score: number; reasons: string[] }>>(new Map());
   const [filters, setFiltersRaw] = useState<Filters>(() => {
     const saved = loadJson<Filters>("gm_filters", {});
     // Default hideWishlistOnly to true for new users
@@ -479,6 +526,17 @@ export function useGames() {
   const games = useMemo(() => {
     const filtered = filterGames(allGames, filters);
     if (shuffleSeed !== null) return seededShuffle(filtered, shuffleSeed);
+    // Play Next sort: use pre-computed scores
+    if (filters.sort === "recommendation" && playNextScores.size > 0) {
+      const sorted = [...filtered].sort((a, b) => {
+        const sa = playNextScores.get(a.id)?.score || 0;
+        const sb = playNextScores.get(b.id)?.score || 0;
+        const d = filters.dir === "asc" ? 1 : -1;
+        if (sa !== sb) return d * (sb - sa);
+        return a.name.localeCompare(b.name);
+      });
+      return sorted;
+    }
     if (filters.search) {
       const scored = filtered.map((g) => ({ g, s: searchScore(g, filters.search!) }));
       scored.sort((a, b) => {
@@ -490,12 +548,23 @@ export function useGames() {
       return scored.map((x) => x.g);
     }
     return sortGames(filtered, filters.sort, filters.dir, filters.sorts);
-  }, [allGames, filters, shuffleSeed]);
+  }, [allGames, filters, shuffleSeed, playNextScores]);
 
   const totalCount = allGames.length;
 
   const shuffle = useCallback(() => setShuffleSeed(Date.now()), []);
   const clearShuffle = useCallback(() => setShuffleSeed(null), []);
+
+  const recalcPlayNext = useCallback(async () => {
+    try {
+      const res = await fetch("/api/play-next");
+      if (!res.ok) { console.error("play-next API error:", res.status); return; }
+      const data = await res.json();
+      const map = new Map<number, { score: number; reasons: string[] }>();
+      for (const g of (data.games || [])) map.set(g.id, { score: g.total, reasons: g.reasons || [] });
+      setPlayNextScores(map);
+    } catch (e) { console.error("play-next fetch error:", e); }
+  }, []);
 
   const addGame = async (game: { name: string; tag_id?: number; subtag_id?: number | null; steam_appid?: number; notes?: string }) => {
     const res = await fetch("/api/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(game) });
@@ -521,5 +590,5 @@ export function useGames() {
 
   const allAppIds = useMemo(() => new Set(allGames.filter(g => g.steam_appid).map(g => g.steam_appid)), [allGames]);
 
-  return { games, allGames, totalCount, loading, filters, setFilters, refresh, addGame, updateGame, deleteGame, allAppIds, shuffleSeed, shuffle, clearShuffle };
+  return { games, allGames, totalCount, loading, filters, setFilters, refresh, addGame, updateGame, deleteGame, allAppIds, shuffleSeed, shuffle, clearShuffle, playNextScores, recalcPlayNext };
 }

@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { assignReleaseYearTag } from "@/lib/release-tag";
+import { assignAllAutoTags } from "@/lib/auto-tags";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
@@ -54,7 +54,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const reviewsRaw = reviewsRes.ok ? await reviewsRes.json() : null;
 
     // 3. Fetch store page for community tags
-    let communityTags: string[] = [];
+    let communityTags: { name: string; count: number }[] = [];
     try {
       const storeRes = await fetch(`https://store.steampowered.com/app/${appid}/`, {
         headers: {
@@ -66,8 +66,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         const html = await storeRes.text();
         const match = html.match(/InitAppTagModal\(\s*\d+,\s*(\[[\s\S]*?\]),/);
         if (match) {
-          const parsed: { name: string }[] = JSON.parse(match[1]);
-          communityTags = parsed.slice(0, 20).map((t) => t.name);
+          const parsed: { name: string; count?: number }[] = JSON.parse(match[1]);
+          communityTags = parsed.slice(0, 20).map((t) => ({ name: t.name, count: t.count || 0 }));
         }
       }
     } catch { /* ignore store page errors */ }
@@ -85,8 +85,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
     // Extract structured data
     let description = "";
-    let steamName: string | null = null;
     let genres: string[] = [];
+    let steamName: string | null = null;
     let features: string[] = [];
     let developers = "";
     let publishers = "";
@@ -119,12 +119,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       screenshots = ssData.map((s) => s.path_full);
 
       const allMovies = (d.movies as { name: string; thumbnail: string; hls_h264?: string; mp4?: { max?: string }; webm?: { max?: string } }[]) || [];
-      totalMov = allMovies.length;
       movies = allMovies.slice(0, maxMovies).map((m) => ({
         name: m.name || "Trailer",
         thumbnail_url: m.thumbnail || "",
         video_url: m.hls_h264 || m.mp4?.max || m.webm?.max || "",
       }));
+      totalMov = movies.length;
     }
 
     // Extract review data
@@ -159,8 +159,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       totalSS, totalMov, id
     );
 
-    // Auto-assign release year tag
-    if (releaseDate) assignReleaseYearTag(db, Number(id), releaseDate);
+    // Auto-assign release year, sentiment, score tags
+    assignAllAutoTags(db, Number(id), { releaseDate, sentiment, positivePercent, totalReviews });
 
     // Download images
     const headerImageUrl = detailData?.[String(appid)]?.success

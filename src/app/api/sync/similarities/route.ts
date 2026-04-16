@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 
 function safeJson(s: string | null): string[] {
   if (!s) return [];
-  try { return JSON.parse(s); } catch { return []; }
+  try {
+    const p = JSON.parse(s);
+    if (!Array.isArray(p)) return [];
+    if (p.length > 0 && typeof p[0] === "object" && p[0].name) return p.map((t: { name: string }) => t.name);
+    return p;
+  } catch { return []; }
 }
 
 // POST /api/sync/similarities — pre-compute similarity scores for all games
@@ -62,15 +67,18 @@ export async function POST() {
         let score = 0;
         const shared: string[] = [];
 
+        // Community tag matching with position-weighted scoring
         for (const [tag, otherIdx] of other.tagWeights) {
           const srcWeight = src.tagWeights.get(tag);
           if (srcWeight !== undefined) {
             score += srcWeight * (1 / (1 + otherIdx * 0.15));
+            // Find original-case tag name
             const origTag = other.tags.find((t) => t.toLowerCase() === tag);
             if (origTag) shared.push(origTag);
           }
         }
 
+        // Genre matching
         for (const g of other.genreSet) {
           if (src.genreSet.has(g)) score += 0.15;
         }
@@ -80,6 +88,7 @@ export async function POST() {
         }
       }
 
+      // Keep top 8 per game
       scored.sort((a, b) => b.score - a.score);
       for (const s of scored.slice(0, 8)) {
         insert.run(src.id, s.id, s.score, JSON.stringify(s.shared));

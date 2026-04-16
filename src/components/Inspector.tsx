@@ -8,7 +8,9 @@ function safeJsonParse(str: string | null | undefined): string[] {
   if (!str) return [];
   try {
     const parsed = JSON.parse(str);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0].name) return parsed.map((t: { name: string }) => t.name);
+    return parsed;
   } catch { return []; }
 }
 
@@ -66,6 +68,7 @@ interface InspectorProps {
   colorCoded?: boolean;
   scoreSource?: "steam" | "steamdb";
   tintColors?: TintColors | null;
+  recScore?: { score: number; reasons: string[] } | null;
 }
 
 interface SteamPreviewProps {
@@ -413,7 +416,7 @@ const InspectorLayout = memo(function InspectorLayout({ data, onClose, tagsSlot,
 });
 
 // Main Inspector for DB games
-export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpdate, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, onSimilarClick, colorCoded, scoreSource, tintColors }: InspectorProps) {
+export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpdate, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, onSimilarClick, colorCoded, scoreSource, tintColors, recScore }: InspectorProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -476,6 +479,8 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     developers: game.developers?.startsWith("[") ? JSON.parse(game.developers).join(", ") : (game.developers || ""),
     publishers: game.publishers?.startsWith("[") ? JSON.parse(game.publishers).join(", ") : (game.publishers || ""),
     releaseDate: game.release_date, wishlistDate: game.wishlist_date, addedAt: game.added_at,
+    queuePosition: game.queue_position,
+    recScore: recScore || null,
     positivePercent: game.positive_percent, totalReviews: game.total_reviews, metacriticScore: game.metacritic_score,
     reviewSentiment: game.review_sentiment || "",
     screenshots, fullScreenshots, movies,
@@ -484,7 +489,7 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
   }), [game.id, game.name, game.steam_appid, game.description, genres, features, communityTags, // eslint-disable-line react-hooks/exhaustive-deps
     game.developers, game.publishers, game.release_date, game.wishlist_date, game.added_at,
     game.positive_percent, game.total_reviews, game.metacritic_score, game.review_sentiment,
-    screenshots, fullScreenshots, movies, game.total_screenshots, game.total_movies, game.notes, aid, refreshKey, game.updated_at]);
+    screenshots, fullScreenshots, movies, game.total_screenshots, game.total_movies, game.notes, aid, refreshKey, game.updated_at, recScore]);
 
   const tagsSlot = useMemo(() => <TagDisplay game={game} onTagInclude={onTagInclude} onTagExclude={onTagExclude}
     onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude} />,
@@ -544,7 +549,42 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     );
   }, [similarGames, onSimilarClick]);
 
-  return <InspectorLayout data={data} onClose={onClose} tagsSlot={tagsSlot} similarSlot={similarSlot} footerSlot={footerSlot}
+  const recSlot = useMemo(() => {
+    const hasRec = recScore && recScore.reasons?.length;
+    const hasCuration = game.queue_position != null;
+    if (!hasRec && !hasCuration) return null;
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          {hasCuration && <span className="text-[10px] text-purple-400 font-bold">📋 Curation #{game.queue_position}</span>}
+          {hasRec && <span className="text-[10px] text-cyan-400 font-bold">🎯 Rec Score: {Math.round(recScore!.score * 100)}</span>}
+        </div>
+        {hasRec && (
+          <div className="flex flex-wrap gap-1">
+            {recScore!.reasons.map((r, i) => {
+              const [label, pct] = r.split(": ");
+              const val = parseInt(pct) || 0;
+              return (
+                <span key={i} className="text-[9px] px-1.5 py-0.5 rounded border inline-flex gap-1"
+                  style={{ backgroundColor: val > 70 ? "rgba(34,197,94,0.1)" : val > 40 ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)",
+                    borderColor: val > 70 ? "rgba(34,197,94,0.2)" : val > 40 ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)",
+                    color: val > 70 ? "#22c55e" : val > 40 ? "#f59e0b" : "#ef4444" }}>
+                  <span>{label}</span><span className="opacity-60">{pct}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }, [recScore, game.queue_position]);
+
+  const combinedSimilarSlot = useMemo(() => {
+    if (!similarSlot && !recSlot) return null;
+    return <>{recSlot}{similarSlot}</>;
+  }, [similarSlot, recSlot]);
+
+  return <InspectorLayout data={data} onClose={onClose} tagsSlot={tagsSlot} similarSlot={combinedSimilarSlot} footerSlot={footerSlot}
     tintBg={inspectorTint}
     onGenreFilter={onGenreFilter} onFeatureFilter={onFeatureFilter} onCommunityTagFilter={onCommunityTagFilter} />;
 }

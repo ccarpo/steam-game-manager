@@ -5,7 +5,7 @@ import { GameWithTags, Tag, steamDbScore, TintColors, getScoreTint } from "@/lib
 
 function safeJsonParse(str: string | null | undefined): string[] {
   if (!str) return [];
-  try { const p = JSON.parse(str); return Array.isArray(p) ? p : []; } catch { return []; }
+  try { const p = JSON.parse(str); if (!Array.isArray(p)) return []; if (p.length > 0 && typeof p[0] === "object" && p[0].name) return p.map((t: { name: string }) => t.name); return p; } catch { return []; }
 }
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -50,6 +50,7 @@ interface Props {
   colorCoded?: boolean;
   scoreSource?: "steam" | "steamdb";
   tintColors?: TintColors | null;
+  recScores?: Map<number, { score: number; reasons: string[] }>;
 }
 
 const HEADER_W = 460;
@@ -66,7 +67,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "labels", label: "Labels", defaultWidth: 260, minWidth: 80 },
   { key: "tags", label: "Tags", defaultWidth: 160, minWidth: 30, sortable: true, getValue: (g) => (g.tags || []).map(t => t.tag_name).join(", ").toLowerCase() },
   { key: "genres", label: "Genres", defaultWidth: 160, minWidth: 30, sortable: true, getValue: (g) => { try { const a = JSON.parse(g.steam_genres || "[]"); return Array.isArray(a) ? a.join(", ").toLowerCase() : ""; } catch { return ""; } } },
-  { key: "community", label: "Community", defaultWidth: 160, minWidth: 30, sortable: true, getValue: (g) => { try { const a = JSON.parse(g.community_tags || "[]"); return Array.isArray(a) ? a.join(", ").toLowerCase() : ""; } catch { return ""; } } },
+  { key: "community", label: "Community", defaultWidth: 160, minWidth: 30, sortable: true, getValue: (g) => { try { const a = JSON.parse(g.community_tags || "[]"); const names = Array.isArray(a) && a.length > 0 && typeof a[0] === "object" ? a.map((t: { name: string }) => t.name) : a; return Array.isArray(names) ? names.join(", ").toLowerCase() : ""; } catch { return ""; } } },
   { key: "features", label: "Features", defaultWidth: 160, minWidth: 30, sortable: true, getValue: (g) => { try { const a = JSON.parse(g.steam_features || "[]"); return Array.isArray(a) ? a.join(", ").toLowerCase() : ""; } catch { return ""; } } },
   { key: "score", label: "Score", defaultWidth: 55, minWidth: 40, sortable: true, getValue: (g) => g.positive_percent || 0 },
   { key: "reviewCount", label: "Reviews", defaultWidth: 70, minWidth: 50, sortable: true, getValue: (g) => g.total_reviews || 0 },
@@ -79,6 +80,8 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "developers", label: "Developer", defaultWidth: 120, minWidth: 60, sortable: true, getValue: (g) => (g.developers || "").toLowerCase() },
   { key: "publishers", label: "Publisher", defaultWidth: 120, minWidth: 60, sortable: true, getValue: (g) => (g.publishers || "").toLowerCase() },
   { key: "appid", label: "AppID", defaultWidth: 75, minWidth: 50, sortable: true, getValue: (g) => g.steam_appid || 0 },
+  { key: "curation", label: "Curation", defaultWidth: 65, minWidth: 40, sortable: true, getValue: (g) => g.queue_position ?? 99999 },
+  { key: "recScore", label: "🎯 Rec", defaultWidth: 55, minWidth: 40, sortable: true },
   { key: "notes", label: "Notes", defaultWidth: 150, minWidth: 60 },
   { key: "actions", label: "", defaultWidth: 70, minWidth: 50 },
 ];
@@ -231,7 +234,7 @@ function GenrePills({ items, className, onFilter }: { items: string[]; className
   );
 }
 
-function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocused, ssColVisible, onEdit, onDelete, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter }: {
+function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocused, ssColVisible, onEdit, onDelete, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, recScores }: {
   col: ColumnDef; game: GameWithTags; imgH: number; ssCount: number; slideshow: boolean; slideDelay: number; pageFocused: boolean; ssColVisible: boolean;
   onEdit?: (game: GameWithTags) => void;
   onDelete: (id: number) => Promise<void>;
@@ -240,6 +243,7 @@ function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocu
   onGenreFilter?: (name: string, mode: "include" | "exclude") => void;
   onFeatureFilter?: (name: string, mode: "include" | "exclude") => void;
   onCommunityTagFilter?: (name: string, mode: "include" | "exclude") => void;
+  recScores?: Map<number, { score: number; reasons: string[] }>;
 }) {
   switch (col.key) {
     case "thumb": {
@@ -257,6 +261,13 @@ function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocu
           )}
         </div>
       );
+    case "curation":
+      return game.queue_position != null ? <span className="text-purple-400 font-bold text-xs">#{game.queue_position}</span> : <span className="text-muted/30">—</span>;
+    case "recScore": {
+      const rec = recScores?.get(game.id);
+      if (!rec) return <span className="text-muted/30">—</span>;
+      return <span className="text-cyan-400 text-xs" title={rec.reasons.join("\n")}>🎯{Math.round(rec.score * 100)}</span>;
+    }
     case "actions":
       return (
         <div className="flex gap-2">
@@ -341,7 +352,7 @@ function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocu
   }
 }
 
-const TableRow = memo(function TableRow({ game, idx, selected, visibleCols, imgH, ssCount, slideshow, slideDelay, pageFocused, ssColVisible, colorCoded, scoreSource, tintColors, onRowClick, onEdit, onDelete, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter }: {
+const TableRow = memo(function TableRow({ game, idx, selected, visibleCols, imgH, ssCount, slideshow, slideDelay, pageFocused, ssColVisible, colorCoded, scoreSource, tintColors, onRowClick, onEdit, onDelete, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, recScores }: {
   game: GameWithTags; idx: number; selected: boolean;
   visibleCols: ColumnDef[]; imgH: number; ssCount: number; slideshow: boolean; slideDelay: number; pageFocused: boolean; ssColVisible: boolean;
   colorCoded?: boolean;
@@ -355,6 +366,7 @@ const TableRow = memo(function TableRow({ game, idx, selected, visibleCols, imgH
   onGenreFilter?: (name: string, mode: "include" | "exclude") => void;
   onFeatureFilter?: (name: string, mode: "include" | "exclude") => void;
   onCommunityTagFilter?: (name: string, mode: "include" | "exclude") => void;
+  recScores?: Map<number, { score: number; reasons: string[] }>;
 }) {
   const effRowH = Math.min(imgH, Math.min(HEADER_H, SS_H));
   const tintBg = colorCoded ? getScoreTint(game, scoreSource || "steamdb", tintColors || null) : undefined;
@@ -376,7 +388,7 @@ const TableRow = memo(function TableRow({ game, idx, selected, visibleCols, imgH
             onTagInclude={onTagInclude} onTagExclude={onTagExclude}
             onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude}
             onGenreFilter={onGenreFilter} onFeatureFilter={onFeatureFilter}
-            onCommunityTagFilter={onCommunityTagFilter} />
+            onCommunityTagFilter={onCommunityTagFilter} recScores={recScores} />
         </td>
       ))}
     </tr>
@@ -397,7 +409,7 @@ const TableRow = memo(function TableRow({ game, idx, selected, visibleCols, imgH
     prev.tintColors === next.tintColors;
 });
 
-export default function GameTable({ games, loading, onDelete, onSelect, onNavigate, onEdit, slideshow, slideDelay = 1000, pageFocused = true, sorts: externalSorts, onSortChange, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, colorCoded, scoreSource, tintColors }: Props) {
+export default function GameTable({ games, loading, onDelete, onSelect, onNavigate, onEdit, slideshow, slideDelay = 1000, pageFocused = true, sorts: externalSorts, onSortChange, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, colorCoded, scoreSource, tintColors, recScores }: Props) {
   const [visibleKeys, setVisibleKeys] = useState<string[]>(() => loadJson("gm_table_cols", DEFAULT_VISIBLE));
   const [colOrder, setColOrder] = useState<string[]>(() => loadJson("gm_table_order", ALL_COLUMNS.map((c) => c.key)));
   const [rowHeight, setRowHeight] = useState<number>(() => loadJson("gm_table_row_size", ROW_IMG_H_DEFAULT));
@@ -713,7 +725,7 @@ export default function GameTable({ games, loading, onDelete, onSelect, onNaviga
                 onTagInclude={onTagInclude} onTagExclude={onTagExclude}
                 onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude}
                 onGenreFilter={onGenreFilter} onFeatureFilter={onFeatureFilter}
-                onCommunityTagFilter={onCommunityTagFilter} />
+                onCommunityTagFilter={onCommunityTagFilter} recScores={recScores} />
             ))}
           </tbody>
         </table>

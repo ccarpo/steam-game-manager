@@ -104,6 +104,8 @@ export async function POST(request: Request) {
           const existing = fs.existsSync(dir) ? new Set(fs.readdirSync(dir)) : new Set<string>();
           // Treat .404 markers as if the file exists (skip re-downloading known 404s)
           for (const f of existing) { if (f.endsWith(".404")) existing.add(f.slice(0, -4)); }
+
+          // Header
           if (dlHeaders && !existing.has("header.jpg")) { needsImages.push(g); continue; }
 
           // Check screenshots
@@ -144,6 +146,8 @@ export async function POST(request: Request) {
           const existing = new Set(fs.readdirSync(dir));
           // Treat .404 markers as if the file exists
           for (const f of existing) { if (f.endsWith(".404")) existing.add(f.slice(0, -4)); }
+
+          // Read appdetails cache once
           let cachedData: { header_image?: string; screenshots?: { path_thumbnail: string; path_full: string }[] } | null = null;
           const cached = db.prepare("SELECT appdetails FROM steam_cache WHERE appid = ?").get(appid) as { appdetails: string } | undefined;
           if (cached) {

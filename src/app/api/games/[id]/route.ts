@@ -54,9 +54,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if ("publishers" in body) { sets.push("publishers = ?"); vals.push(body.publishers ?? ""); }
   if ("release_date" in body) { sets.push("release_date = ?"); vals.push(body.release_date ?? ""); }
   if ("added_at" in body) { sets.push("added_at = ?"); vals.push(body.added_at ?? null); }
+  if ("queue_position" in body) { sets.push("queue_position = ?"); vals.push(body.queue_position ?? null); }
+  if ("user_rating" in body) { sets.push("user_rating = ?"); vals.push(body.user_rating ?? null); }
   vals.push(id);
 
   db.prepare(`UPDATE games SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+
+  // Auto-renumber curation positions to integers after insert-between
+  if ("queue_position" in body && body.queue_position != null) {
+    const positioned = db.prepare("SELECT id, queue_position FROM games WHERE queue_position IS NOT NULL ORDER BY queue_position, name").all() as { id: number; queue_position: number }[];
+    const renumber = db.prepare("UPDATE games SET queue_position = ? WHERE id = ?");
+    const tx = db.transaction(() => {
+      positioned.forEach((g, i) => { if (g.queue_position !== i + 1) renumber.run(i + 1, g.id); });
+    });
+    tx();
+  }
 
   // If tags array provided, replace all tag associations
   if (Array.isArray(tags)) {

@@ -27,7 +27,7 @@ interface SteamResult {
 export default function Home() {
   const { tags } = useTags();
   const { subtags } = useSubtags();
-  const { games, allGames, totalCount, loading, filters, setFilters, addGame, updateGame, deleteGame, allAppIds, shuffleSeed, shuffle, clearShuffle } = useGames();
+  const { games, allGames, totalCount, loading, filters, setFilters, addGame, updateGame, deleteGame, allAppIds, shuffleSeed, shuffle, clearShuffle, playNextScores, recalcPlayNext } = useGames();
   const { genres, features, communityTags } = useGenres();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -85,13 +85,30 @@ export default function Home() {
   }, [games]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hydrate persisted prefs after mount (avoids SSR hydration mismatch)
+  // Try localStorage first, then fall back to DB prefs (for incognito)
   const hydratedRef = useRef(false);
   useEffect(() => {
-    setSidebarCollapsed(loadPref("gm_sidebar", false));
-    setSidebarWidth(loadPref("gm_sidebar_width", 256));
-    setView(loadPref("gm_view", "cards"));
-    setCardCols(loadPref("gm_cols", 6));
-    hydratedRef.current = true;
+    const localView = loadPref<string | null>("gm_view", null);
+    if (localView !== null) {
+      // localStorage has data — use it (normal browsing)
+      setSidebarCollapsed(loadPref("gm_sidebar", false));
+      setSidebarWidth(loadPref("gm_sidebar_width", 256));
+      setView(loadPref("gm_view", "cards"));
+      setCardCols(loadPref("gm_cols", 6));
+      hydratedRef.current = true;
+    } else {
+      // No localStorage (incognito) — load from DB
+      fetch("/api/prefs").then(r => r.json()).then((prefs: Record<string, string>) => {
+        if (prefs.gm_sidebar !== undefined) setSidebarCollapsed(JSON.parse(prefs.gm_sidebar));
+        if (prefs.gm_sidebar_width !== undefined) setSidebarWidth(JSON.parse(prefs.gm_sidebar_width));
+        if (prefs.gm_view !== undefined) setView(JSON.parse(prefs.gm_view));
+        if (prefs.gm_cols !== undefined) setCardCols(JSON.parse(prefs.gm_cols));
+        if (prefs.gm_default_filters !== undefined) {
+          try { localStorage.setItem("gm_default_filters", prefs.gm_default_filters); } catch {}
+        }
+        hydratedRef.current = true;
+      }).catch(() => { hydratedRef.current = true; });
+    }
   }, []);
 
   // Track page focus
@@ -205,11 +222,16 @@ export default function Home() {
   const [steamLoading, setSteamLoading] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  // Persist prefs (skip initial mount to avoid overwriting saved values)
-  useEffect(() => { if (hydratedRef.current) localStorage.setItem("gm_view", JSON.stringify(view)); }, [view]);
-  useEffect(() => { if (hydratedRef.current) localStorage.setItem("gm_cols", JSON.stringify(cardCols)); }, [cardCols]);
-  useEffect(() => { if (hydratedRef.current) localStorage.setItem("gm_sidebar", JSON.stringify(sidebarCollapsed)); }, [sidebarCollapsed]);
-  useEffect(() => { if (hydratedRef.current) localStorage.setItem("gm_sidebar_width", JSON.stringify(sidebarWidth)); }, [sidebarWidth]);
+  // Persist prefs to localStorage + DB (skip initial mount)
+  const savePref = (key: string, value: unknown) => {
+    const v = JSON.stringify(value);
+    localStorage.setItem(key, v);
+    fetch("/api/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, value: v }) }).catch(() => {});
+  };
+  useEffect(() => { if (hydratedRef.current) savePref("gm_view", view); }, [view]);
+  useEffect(() => { if (hydratedRef.current) savePref("gm_cols", cardCols); }, [cardCols]);
+  useEffect(() => { if (hydratedRef.current) savePref("gm_sidebar", sidebarCollapsed); }, [sidebarCollapsed]);
+  useEffect(() => { if (hydratedRef.current) savePref("gm_sidebar_width", sidebarWidth); }, [sidebarWidth]);
 
   // When switching views, scroll to the same game that was at the top
   const viewInitRef = useRef(true);
@@ -353,6 +375,11 @@ export default function Home() {
     }, 600);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Auto-fetch play-next scores on first load and when sort mode is selected
+  useEffect(() => {
+    if (playNextScores.size === 0) recalcPlayNext();
+  }, [playNextScores.size, recalcPlayNext]);
 
   // Sync search query to filters (for DB filtering)
   useEffect(() => {
@@ -509,6 +536,8 @@ export default function Home() {
             total_screenshots: 0, total_movies: 0,
             steam_image_url: null, wishlist_date: null,
             added_at: new Date().toISOString().split("T")[0],
+            queue_position: null,
+            user_rating: null,
             created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
             tags: [],
           });
@@ -532,7 +561,9 @@ export default function Home() {
     (filters.excludeDevelopers?.length || 0) > 0 ||
     (filters.includePublishers?.length || 0) > 0 ||
     (filters.excludePublishers?.length || 0) > 0 ||
-    filters.untagged || filters.withNotes || filters.hideWishlistOnly || isSearching;
+    filters.untagged || filters.withNotes || filters.hideWishlistOnly ||
+    filters.scoreMin !== undefined || filters.scoreMax !== undefined ||
+    filters.reviewsMin !== undefined || filters.reviewsMax !== undefined || isSearching;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -581,6 +612,9 @@ export default function Home() {
             <option value="release_date">Release</option>
             <option value="wishlist_date">Wishlist Date</option>
             <option value="added_at">Added</option>
+            <option value="recommendation">🎯 Recommendation</option>
+            <option value="curation">📋 Curation</option>
+            <option value="user_rating">⭐ My Rating</option>
           </select>
           <button
             onClick={() => {
@@ -644,6 +678,7 @@ export default function Home() {
           >🖼</button>
 
           {lanIps.length > 0 && <span className="text-[10px] text-muted">{lanIps[0]}:3000</span>}
+          <a href="/stats" className="text-xs text-muted hover:text-foreground" title="Stats">📊</a>
           <a href="/settings" className="text-xs text-muted hover:text-foreground">⚙️</a>
         </div>
 
@@ -667,6 +702,7 @@ export default function Home() {
                       slideshow={slideshow} slideDelay={slideSpeed * 1000} pageFocused={pageFocused}
                       defaultImage={defaultImage} genresCount={genresCount} communityTagsCount={communityTagsCount}
                       colorCoded={colorCoded} scoreSource={scoreSource} tintColors={tintColors}
+                      recScore={playNextScores.get(game.id)?.score ?? null}
                       onTagInclude={toggleIncTag} onTagExclude={toggleExcTag}
                       onSubtagInclude={toggleIncSub} onSubtagExclude={toggleExcSub}
                       onGenreFilter={onGenreFilter}
@@ -699,7 +735,8 @@ export default function Home() {
                   onSubtagInclude={toggleIncSub} onSubtagExclude={toggleExcSub}
                   onGenreFilter={onGenreFilter}
                   onFeatureFilter={onFeatureFilter}
-                  onCommunityTagFilter={onCommunityTagFilter} />
+                  onCommunityTagFilter={onCommunityTagFilter}
+                  recScores={playNextScores} />
               )}
               {isSearching && (
                 <SteamResultsSection
@@ -731,6 +768,7 @@ export default function Home() {
           onGenreFilter={onGenreFilter}
           onFeatureFilter={onFeatureFilter}
           onCommunityTagFilter={onCommunityTagFilter}
+          recScore={playNextScores.get(inspectorGame.id) || null}
           onSimilarClick={async (gameId) => {
             const found = allGames.find((g) => g.id === gameId);
             if (found) { setSimilarStack((s) => [...s, found]); return; }
@@ -751,6 +789,7 @@ export default function Home() {
           onGenreFilter={onGenreFilter}
           onFeatureFilter={onFeatureFilter}
           onCommunityTagFilter={onCommunityTagFilter}
+          recScore={playNextScores.get(sg.id) || null}
           onSimilarClick={async (gameId) => {
             const found = allGames.find((g) => g.id === gameId);
             if (found) { setSimilarStack((s) => [...s, found]); return; }
@@ -978,6 +1017,14 @@ function FilterChips({ tags, subtags, filters, onChange, onClearSearch }: { tags
     chips.push({ label: "Curated only", color: "#6366f1", type: "include",
       onRemove: () => onChange({ ...filters, hideWishlistOnly: false }) });
   }
+  if (filters.scoreMin !== undefined || filters.scoreMax !== undefined) {
+    chips.push({ label: `Score: ${filters.scoreMin ?? 0}–${filters.scoreMax ?? 100}%`, color: "#22c55e", type: "include",
+      onRemove: () => onChange({ ...filters, scoreMin: undefined, scoreMax: undefined }) });
+  }
+  if (filters.reviewsMin !== undefined || filters.reviewsMax !== undefined) {
+    chips.push({ label: `Reviews: ${filters.reviewsMin ?? 0}–${filters.reviewsMax ?? "∞"}`, color: "#8b5cf6", type: "include",
+      onRemove: () => onChange({ ...filters, reviewsMin: undefined, reviewsMax: undefined }) });
+  }
 
   if (chips.length === 0) return null;
 
@@ -994,12 +1041,6 @@ function FilterChips({ tags, subtags, filters, onChange, onClearSearch }: { tags
           <button onClick={chip.onRemove} className="hover:opacity-70 ml-0.5 font-bold" style={{ color: chip.color }}>×</button>
         </span>
       ))}
-      <button onClick={() => { onChange({
-        ...filters, includeTags: [], excludeTags: [], includeSubtags: [], excludeSubtags: [],
-        includeGenres: [], excludeGenres: [],
-        includeFeatures: [], excludeFeatures: [], includeCommunityTags: [], excludeCommunityTags: [],
-        includeDevelopers: [], excludeDevelopers: [], includePublishers: [], excludePublishers: [],
-        untagged: false, withNotes: false, hideWishlistOnly: false, search: undefined,
       <button onClick={() => {
         let def: Partial<Filters> = {};
         try { const raw = localStorage.getItem("gm_default_filters"); if (raw) def = JSON.parse(raw); } catch {}
@@ -1008,7 +1049,7 @@ function FilterChips({ tags, subtags, filters, onChange, onClearSearch }: { tags
           includeGenres: [], excludeGenres: def.excludeGenres || [],
           includeFeatures: [], excludeFeatures: def.excludeFeatures || [], includeCommunityTags: [], excludeCommunityTags: def.excludeCommunityTags || [],
           includeDevelopers: [], excludeDevelopers: def.excludeDevelopers || [], includePublishers: [], excludePublishers: def.excludePublishers || [],
-          untagged: false, withNotes: false, hideWishlistOnly: def.hideWishlistOnly || false, search: undefined,
+          untagged: false, withNotes: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, search: undefined,
         }); onClearSearch?.(); }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
       <button onClick={() => {
         const { search, sort, sorts, dir, ...rest } = filters;

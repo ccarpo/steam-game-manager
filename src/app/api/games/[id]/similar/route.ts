@@ -90,5 +90,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 function safeJson(s: string | null): string[] {
   if (!s) return [];
-  try { return JSON.parse(s); } catch { return []; }
+  try {
+    const p = JSON.parse(s);
+    if (!Array.isArray(p)) return [];
+    if (p.length > 0 && typeof p[0] === "object" && p[0].name) return p.map((t: { name: string }) => t.name);
+    return p;
+  } catch { return []; }
 }

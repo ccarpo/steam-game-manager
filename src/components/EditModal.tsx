@@ -40,6 +40,8 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
   });
   const [releaseDate, setReleaseDate] = useState(game.release_date || "");
   const [addedAt, setAddedAt] = useState(game.added_at || "");
+  const [queuePosition, setQueuePosition] = useState(game.queue_position?.toString() || "");
+  const [userRating, setUserRating] = useState(game.user_rating?.toString() || "");
   const [genres, setGenres] = useState(() => { try { return JSON.parse(game.steam_genres || "[]").join(", "); } catch { return ""; } });
   const [allGenres, setAllGenres] = useState<string[]>([]);
   const [tagEntries, setTagEntries] = useState<TagEntry[]>(() => {
@@ -165,8 +167,12 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
     try {
       const data: Record<string, unknown> = { name, notes, tags: tagData };
       if (steamAppid) data.steam_appid = Number(steamAppid);
-      else if (game.steam_appid) data.steam_appid = null;
+      else if (game.steam_appid) data.steam_appid = null; // explicitly cleared
       if (addedAt) data.added_at = addedAt;
+      if (queuePosition !== "" || game.queue_position != null) data.queue_position = queuePosition ? Number(queuePosition) : null;
+      if (userRating !== "" || game.user_rating != null) data.user_rating = userRating ? Number(userRating) : null;
+      // Only send metadata fields if they have content or were changed from a non-empty original
+      // This prevents blank modal fields from overwriting background-fetched metadata
       if (description || game.description) data.description = description;
       if (developers || game.developers) data.developers = developers;
       if (publishers || game.publishers) data.publishers = publishers;
@@ -394,6 +400,16 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
           <label className="block text-xs text-muted">
             Added Date
             <input type="text" value={addedAt} onChange={(e) => setAddedAt(e.target.value)} placeholder="2024-03-15 12:00:00"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+          </label>
+          <label className="block text-xs text-muted">
+            Curation #
+            <input type="number" step="any" value={queuePosition} onChange={(e) => setQueuePosition(e.target.value)} placeholder="—"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+          </label>
+          <label className="block text-xs text-muted">
+            My Rating (1-10)
+            <input type="number" min={1} max={10} step={0.5} value={userRating} onChange={(e) => setUserRating(e.target.value)} placeholder="—"
               className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
           </label>
         </div>

@@ -9,10 +9,11 @@ function countFromColumn(db: ReturnType<typeof getDb>, column: string) {
   const counts = new Map<string, number>();
   for (const row of rows) {
     try {
-      const items: string[] = JSON.parse(row[column]);
-      for (const item of items) {
-        const trimmed = item.trim();
-        if (trimmed) counts.set(trimmed, (counts.get(trimmed) || 0) + 1);
+      const parsed = JSON.parse(row[column]);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed) {
+        const name = typeof item === "object" && item.name ? item.name : typeof item === "string" ? item : null;
+        if (name) counts.set(name.trim(), (counts.get(name.trim()) || 0) + 1);
       }
     } catch { /* skip */ }
   }

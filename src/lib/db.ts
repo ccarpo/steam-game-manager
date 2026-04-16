@@ -133,7 +133,7 @@ export function getDb(): Database.Database {
       try { db.pragma("wal_checkpoint(PASSIVE)"); } catch {}
     }
   }, 5 * 60 * 1000);
-  flushInterval.unref();
+  flushInterval.unref(); // don't keep process alive just for this
 
   return db;
 }
@@ -231,19 +231,53 @@ function initSchema(db: Database.Database) {
     db.prepare("UPDATE games SET added_at = ? WHERE added_at IS NULL OR added_at = ''").run(today);
   }
 
+  // Migration: add queue_position column for custom play ordering
+  if (!gameCols.some((c) => c.name === "queue_position")) {
+    db.exec("ALTER TABLE games ADD COLUMN queue_position REAL");
+  }
+
+  // Migration: add user_rating column (1-10 personal rating for recommendation weighting)
+  if (!gameCols.some((c) => c.name === "user_rating")) {
+    db.exec("ALTER TABLE games ADD COLUMN user_rating REAL");
+  }
+
   // Startup: sync total_screenshots/total_movies from disk
   syncAssetCounts(db);
 
+  // Pre-migration backup (only if any migration will actually run)
+  const needsDevPubMigration = (() => {
+    const s = db.prepare("SELECT developers FROM games WHERE developers != '' AND developers IS NOT NULL LIMIT 1").get() as { developers: string } | undefined;
+    return s && !s.developers.startsWith("[");
+  })();
+  const needsAutoTagMigration = (() => {
+    const old = db.prepare("SELECT id FROM tags WHERE name IN ('release','sentiment','score') LIMIT 1").get();
+    return !!old;
+  })();
+  if (needsDevPubMigration || needsAutoTagMigration) {
+    const backupDir = path.join(DB_DIR, "backups", "pre-migration");
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const dest = path.join(backupDir, `games_${ts}.db`);
+    db.pragma("wal_checkpoint(TRUNCATE)");
+    fs.copyFileSync(DB_PATH, dest);
+    dbLog(`Pre-migration backup: ${dest}`);
+  }
+
   // Migration: convert developers/publishers from comma-separated to JSON arrays
   migrateDevPubToJson(db);
+
+  // Migration: merge old separate release/sentiment/score tags into unified "auto" tag
+  migrateAutoTags(db);
 }
 
 function migrateDevPubToJson(db: Database.Database) {
+  // Check if already migrated: if any developer field starts with "[", assume done
   const sample = db.prepare("SELECT developers FROM games WHERE developers != '' AND developers IS NOT NULL LIMIT 1").get() as { developers: string } | undefined;
   if (!sample || sample.developers.startsWith("[")) return;
 
   dbLog("Migrating developers/publishers to JSON arrays...");
 
+  // Check if steam_cache table exists
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='steam_cache'").get();
   if (!tables) { dbLog("No steam_cache table, skipping migration."); return; }
 
@@ -315,6 +349,58 @@ function syncAssetCounts(db: Database.Database) {
   tx();
   const scanned = games.filter(g => fs.existsSync(path.join(ASSETS_DIR, String(g.steam_appid || `manual_${g.id}`)))).length;
   dbLog(`Asset scan: ${scanned} games checked, ${changed} updated`);
+}
+
+/** Migrate old separate release/sentiment/score L0 tags into unified "auto" tag */
+function migrateAutoTags(db: Database.Database) {
+  const oldNames = ["release", "sentiment", "score"];
+  // Check if any old tags exist
+  const oldTags = db.prepare(`SELECT id, name FROM tags WHERE name IN (${oldNames.map(() => "?").join(",")})`).all(...oldNames) as { id: number; name: string }[];
+  if (oldTags.length === 0) return;
+
+  // Check if "auto" tag already has subtags (already migrated)
+  const autoTag = db.prepare("SELECT id FROM tags WHERE name = 'auto'").get() as { id: number } | undefined;
+  if (autoTag) {
+    const autoSubs = db.prepare("SELECT COUNT(*) as c FROM subtags WHERE tag_id = ?").get(autoTag.id) as { c: number };
+    if (autoSubs.c > 0) return; // already migrated
+  }
+
+  dbLog("Migrating release/sentiment/score tags into unified 'auto' tag...");
+
+  // Ensure auto tag
+  db.prepare("INSERT OR IGNORE INTO tags (name, color) VALUES ('auto', '#f97316')").run();
+  const autoId = (db.prepare("SELECT id FROM tags WHERE name = 'auto'").get() as { id: number }).id;
+
+  let migrated = 0;
+  const tx = db.transaction(() => {
+    for (const oldTag of oldTags) {
+      const typeMap: Record<string, string> = { release: "release", sentiment: "sentiment", score: "score" };
+      const newType = typeMap[oldTag.name] || "meta";
+
+      // Get old subtags
+      const oldSubs = db.prepare("SELECT id, name FROM subtags WHERE tag_id = ?").all(oldTag.id) as { id: number; name: string }[];
+
+      for (const oldSub of oldSubs) {
+        // Create new subtag under auto with the correct type
+        db.prepare("INSERT OR IGNORE INTO subtags (tag_id, name, type) VALUES (?, ?, ?)").run(autoId, oldSub.name, newType);
+        const newSub = db.prepare("SELECT id FROM subtags WHERE tag_id = ? AND name = ? AND type = ?").get(autoId, oldSub.name, newType) as { id: number };
+
+        // Move game_tags from old subtag to new
+        const gameTags = db.prepare("SELECT game_id FROM game_tags WHERE tag_id = ? AND subtag_id = ?").all(oldTag.id, oldSub.id) as { game_id: number }[];
+        for (const gt of gameTags) {
+          db.prepare("INSERT OR IGNORE INTO game_tags (game_id, tag_id, subtag_id) VALUES (?, ?, ?)").run(gt.game_id, autoId, newSub.id);
+          migrated++;
+        }
+      }
+
+      // Delete old tag (cascades to subtags and game_tags via FK)
+      db.prepare("DELETE FROM game_tags WHERE tag_id = ?").run(oldTag.id);
+      db.prepare("DELETE FROM subtags WHERE tag_id = ?").run(oldTag.id);
+      db.prepare("DELETE FROM tags WHERE id = ?").run(oldTag.id);
+    }
+  });
+  tx();
+  dbLog(`Migrated ${migrated} auto-tag assignments from ${oldTags.map(t => t.name).join(", ")} into 'auto' tag.`);
 }
 
 /** Read Steam API key and Steam ID from the settings table */

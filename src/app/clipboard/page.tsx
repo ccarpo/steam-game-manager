@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { GameWithTags } from "@/lib/types";
-import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches } from "@/lib/clipboard-match";
+import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches, splitGames } from "@/lib/clipboard-match";
 
 const STATUS = {
   exact: { color: "#4ade80", bg: "#16a34a50", border: "#16a34a80", label: "EXACT MATCH" },
@@ -59,7 +59,7 @@ export default function ClipboardPage() {
     });
   }, []);
 
-  const libraryGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name !== "owned"));
+  const { libraryGames, steamGames } = splitGames(allGames);
 
   const processClip = (text: string) => {
     const t = text.trim();
@@ -67,7 +67,7 @@ export default function ClipboardPage() {
       lastClipRef.current = t;
       setClipText(t);
       setLibMatch(findMatches(t, libraryGames, configRef.current));
-      setWishMatch(findMatches(t, allGames, configRef.current));
+      setWishMatch(findMatches(t, steamGames, configRef.current));
     }
   };
 
@@ -80,7 +80,7 @@ export default function ClipboardPage() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allGames, libraryGames]);
+  }, [allGames, libraryGames, steamGames]);
 
   // Server poll when unfocused
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function ClipboardPage() {
     }, 1000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allGames, libraryGames]);
+  }, [allGames, libraryGames, steamGames]);
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden select-none" style={{ minWidth: 300 }}>
@@ -108,7 +108,7 @@ export default function ClipboardPage() {
       </div>
       <div className="flex flex-1 overflow-hidden divide-x divide-border">
         <MatchColumn title="LIBRARY" match={libMatch} />
-        <MatchColumn title="WISHLIST" match={wishMatch} />
+        <MatchColumn title="STEAM" match={wishMatch} />
       </div>
     </div>
   );

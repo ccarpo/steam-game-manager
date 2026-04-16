@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { GameWithTags } from "@/lib/types";
-import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches } from "@/lib/clipboard-match";
+import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches, splitGames } from "@/lib/clipboard-match";
 
 const COLORS = {
   exact: { bg: "#22c55e", label: "EXACT" },
@@ -100,7 +100,7 @@ function drawCanvas(
   };
 
   drawColumn(0, halfW - 1, "LIBRARY", libraryMatch);
-  drawColumn(halfW, width - halfW, "WISHLIST", wishlistMatch);
+  drawColumn(halfW, width - halfW, "STEAM", wishlistMatch);
 }
 
 interface ClipboardPiPProps {
@@ -137,14 +137,13 @@ export default function ClipboardPiP({ active }: ClipboardPiPProps) {
       .catch(() => {});
   }, [active]);
 
-  // Split into library (has custom tags, excluding owned-only) vs wishlist-only
-  const libraryGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name !== "owned"));
-  const wishlistGames = allGames; // search all for wishlist column
+  // Split into library (has non-steam tags) vs steam
+  const { libraryGames, steamGames } = splitGames(allGames);
 
   const doMatch = useCallback((text: string) => {
     libMatchRef.current = findMatches(text, libraryGames, configRef.current);
-    wishMatchRef.current = findMatches(text, wishlistGames, configRef.current);
-  }, [libraryGames, wishlistGames]);
+    wishMatchRef.current = findMatches(text, steamGames, configRef.current);
+  }, [libraryGames, steamGames]);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;

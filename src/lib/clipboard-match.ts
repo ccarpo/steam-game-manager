@@ -53,3 +53,11 @@ export function findMatches(query: string, games: GameWithTags[], config: MatchC
 
   return { type: "none", games: [] };
 }
+
+
+/** Split games into library (has any non-steam tag) and steam (has steam tag) */
+export function splitGames(allGames: GameWithTags[]): { libraryGames: GameWithTags[]; steamGames: GameWithTags[] } {
+  const libraryGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name !== "steam"));
+  const steamGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name === "steam"));
+  return { libraryGames, steamGames };
+}

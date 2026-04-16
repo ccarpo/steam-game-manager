@@ -14,11 +14,7 @@ export async function POST() {
       try {
         const db = getDb();
         const { steamId, apiKey } = getSteamCredentials(db);
-        if (!steamId || !apiKey) {
-          send({ type: "error", message: "Steam ID and API Key must be configured in Settings." });
-          controller.close();
-          return;
-        }
+        if (!steamId || !apiKey) { send({ type: "error", message: "Steam credentials not configured. Go to Settings." }); controller.close(); return; }
 
         // Ensure wishlist_date column
         const cols = db.prepare("PRAGMA table_info(games)").all() as { name: string }[];
