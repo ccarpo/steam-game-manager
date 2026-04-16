@@ -392,14 +392,22 @@ export default function Sidebar({
       </div>
       {/* Min community tags filter */}
       <div className="px-2 py-1">
-        <div className="flex items-center gap-1 text-[10px]">
-          <span className="text-muted shrink-0">Min tags</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-muted shrink-0">Min comm</span>
           <input type="number" min={0} max={20} placeholder="—"
             value={filters.minCommunityTags ?? ""}
             onChange={(e) => onChange({ ...filters, minCommunityTags: e.target.value ? Number(e.target.value) : undefined })}
             className="w-10 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
           {filters.minCommunityTags !== undefined && (
             <button onClick={() => onChange({ ...filters, minCommunityTags: undefined })} className="text-danger text-[10px]">✕</button>
+          )}
+          <span className="text-muted shrink-0 ml-1">Min genres</span>
+          <input type="number" min={0} max={20} placeholder="—"
+            value={filters.minGenres ?? ""}
+            onChange={(e) => onChange({ ...filters, minGenres: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-10 bg-background border border-border rounded px-1 py-0.5 text-center text-[10px]" />
+          {filters.minGenres !== undefined && (
+            <button onClick={() => onChange({ ...filters, minGenres: undefined })} className="text-danger text-[10px]">✕</button>
           )}
         </div>
       </div>

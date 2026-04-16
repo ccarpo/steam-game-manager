@@ -60,8 +60,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   db.prepare(`UPDATE games SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
 
-  // Auto-renumber curation positions to integers after insert-between
-  if ("queue_position" in body && body.queue_position != null) {
+  // Auto-renumber curation positions to integers after any queue_position change
+  if ("queue_position" in body) {
     const positioned = db.prepare("SELECT id, queue_position FROM games WHERE queue_position IS NOT NULL ORDER BY queue_position, name").all() as { id: number; queue_position: number }[];
     const renumber = db.prepare("UPDATE games SET queue_position = ? WHERE id = ?");
     const tx = db.transaction(() => {

@@ -1068,14 +1068,14 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
       </div>
 
       <div className="flex gap-2">
-        <button onClick={save} className="px-3 py-1.5 rounded text-xs border border-accent/50 text-accent hover:bg-accent/10">💾 Save</button>
-        <button onClick={reset} className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground">↺ Reset defaults</button>
         <button onClick={async () => {
+          save();
           appendLog("Recalculating recommendation scores...");
           const res = await fetch("/api/play-next");
           const data = await res.json();
           appendLog(`Scored ${data.games?.length || 0} games. Profile: ${data.profile?.playedCount || 0} played.`);
-        }} className="px-3 py-1.5 rounded text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10">🔄 Recalculate</button>
+        }} className="px-3 py-1.5 rounded text-xs border border-accent/50 text-accent hover:bg-accent/10">💾 Save & Recalculate</button>
+        <button onClick={reset} className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground">↺ Reset defaults</button>
         <button onClick={async () => {
           const res = await fetch("/api/play-next");
           const data = await res.json();

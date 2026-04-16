@@ -52,6 +52,7 @@ export interface Filters {
   reviewsMin?: number;
   reviewsMax?: number;
   minCommunityTags?: number;
+  minGenres?: number;
 }
 
 export interface GenreInfo { name: string; count: number; }
@@ -275,6 +276,12 @@ function filterGames(allGames: GameWithTags[], filters: Filters): GameWithTags[]
     if (filters.minCommunityTags !== undefined) {
       const ctags = safeJsonParse(game.community_tags);
       if (ctags.length < filters.minCommunityTags) return false;
+    }
+
+    // Min genres filter
+    if (filters.minGenres !== undefined) {
+      const genres = safeJsonParse(game.steam_genres);
+      if (genres.length < filters.minGenres) return false;
     }
 
     // Hide wishlist-only (games whose only L0 tag is "steam")
