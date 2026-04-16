@@ -78,6 +78,25 @@ const CACHE_COL: Record<Source, keyof CacheRow> = {
   appdetails: "appdetails", reviews: "reviews", community: "store_page_tags",
 };
 
+/** Fetch a single source for a single game and update cache */
+async function fetchOneSource(
+  db: ReturnType<typeof getDb>, cacheMap: Map<number, CacheRow>,
+  appid: number, src: Source,
+): Promise<void> {
+  if (src === "appdetails") {
+    const result = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`);
+    if (!result) throw new Error("rate_limit");
+    upsertCacheCol(db, cacheMap, appid, "appdetails", JSON.stringify(result));
+  } else if (src === "reviews") {
+    const result = await fetchJson(`https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0`);
+    upsertCacheCol(db, cacheMap, appid, "reviews", JSON.stringify(result));
+  } else {
+    const html = await fetchStorePage(appid);
+    const ctags = html ? parseCommunityTags(html) : [];
+    upsertCacheCol(db, cacheMap, appid, "store_page_tags", JSON.stringify(ctags));
+  }
+}
+
 /**
  * GET /api/sync/metadata — returns session status for all sources
  */
@@ -170,26 +189,13 @@ export async function POST(req: Request) {
               const fetches: Promise<void>[] = [];
 
               if (!cached?.appdetails) {
-                fetches.push((async () => {
-                  const result = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`);
-                  if (!result) throw new Error("rate_limit");
-                  upsertCacheCol(db, cacheMap, appid, "appdetails", JSON.stringify(result));
-                })());
+                fetches.push(fetchOneSource(db, cacheMap, appid, "appdetails"));
               }
               if (!cached?.reviews) {
-                fetches.push((async () => {
-                  const result = await fetchJson(
-                    `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0`
-                  );
-                  upsertCacheCol(db, cacheMap, appid, "reviews", JSON.stringify(result));
-                })());
+                fetches.push(fetchOneSource(db, cacheMap, appid, "reviews"));
               }
               if (!cached?.store_page_tags) {
-                fetches.push((async () => {
-                  const html = await fetchStorePage(appid);
-                  const ctags = html ? parseCommunityTags(html) : [];
-                  upsertCacheCol(db, cacheMap, appid, "store_page_tags", JSON.stringify(ctags));
-                })());
+                fetches.push(fetchOneSource(db, cacheMap, appid, "community"));
               }
 
               await Promise.all(fetches);
@@ -273,20 +279,7 @@ export async function POST(req: Request) {
               const batch = needsFetch.slice(i, i + concurrency);
               const results = await Promise.allSettled(batch.map(async (g) => {
                 const appid = g.steam_appid;
-                if (src === "appdetails") {
-                  const result = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`);
-                  if (!result) throw new Error("rate_limit");
-                  upsertCacheCol(db, cacheMap, appid, "appdetails", JSON.stringify(result));
-                } else if (src === "reviews") {
-                  const result = await fetchJson(
-                    `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0`
-                  );
-                  upsertCacheCol(db, cacheMap, appid, "reviews", JSON.stringify(result));
-                } else {
-                  const html = await fetchStorePage(appid);
-                  const ctags = html ? parseCommunityTags(html) : [];
-                  upsertCacheCol(db, cacheMap, appid, "store_page_tags", JSON.stringify(ctags));
-                }
+                await fetchOneSource(db, cacheMap, appid, src);
                 // Immediately update game row from cache
                 const freshCache = cacheMap.get(appid);
                 if (freshCache) rebuildOneGame(db, g.id, appid, freshCache, maxSS, maxMov);
