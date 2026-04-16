@@ -101,6 +101,27 @@ Then use the sync buttons to pull your library.
 - **Database re-init** — Re-run migrations and asset count sync without losing data.
 - **System log** — Collapsible log viewer in Settings showing DB initialization, migration results, sync events, and errors. Ring buffer of last 200 entries with color-coded levels.
 
+### Recommendation Engine
+
+- **Play Next scoring** — Sort by "🎯 Recommendation" to see games ranked by how well they match your preferences. 7 configurable signals: genre match, developer match, community tag match (with vote count weighting), score quality (configurable sweet spot), release maturity, time in library, and priority tag boost.
+- **Preference profile** — Built automatically from your played games. Rate games 1–10 to influence the profile — higher-rated games contribute more. View your full profile in Settings.
+- **Genre preferences** — Manually boost or penalize specific genres/community tags (e.g. "+50 Metroidvania, -30 Simulation"). Autocomplete from your library's available tags.
+- **Configurable weights** — Adjust signal weights in Settings with a live counter. Community tag mode: "by count" (popular tags = stronger) or "inverse" (rare tags = more distinctive).
+- **Three categories** — Played (training data), Priority (score boost per subtag), Exclude (hidden from results). All configurable with tag>subtag autocomplete.
+- **Curation queue** — Manual play ordering with auto-renumber. Set position 3.5 between 3 and 4, all positions renumber to integers.
+- **User rating** — Rate any game 1–10. Sort by "⭐ My Rating" or filter to "With rating" to manage your ratings.
+
+### Stats Dashboard
+
+- **Library analytics** at `/stats` — Overview cards (total games, Steam games, with notes, untagged, avg score), score distribution, sentiment breakdown, top genres, community tags, developers, release years, added over time.
+
+### Auto Tags
+
+- **Release year** — Auto-assigns games to year subtags (2014–2027, TBA) under a unified "auto" tag.
+- **Sentiment** — Auto-assigns Steam review sentiment (Very Positive, Mixed, etc.).
+- **Score buckets** — Auto-assigns configurable score ranges.
+- **One-click regenerate** — "🏷️ Auto Tags" button in Settings.
+
 ### Data Safety & Recovery
 
 - **Auto-backup on exit** — When the dev server stops cleanly, if any data changed during the session, a timestamped backup is saved to `data/backups/` with a delta log showing what changed (games added/removed, tag assignments).
