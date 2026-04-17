@@ -55,9 +55,10 @@ export function findMatches(query: string, games: GameWithTags[], config: MatchC
 }
 
 
-/** Split games into library (has any non-steam tag) and steam (has steam tag) */
-export function splitGames(allGames: GameWithTags[]): { libraryGames: GameWithTags[]; steamGames: GameWithTags[] } {
-  const libraryGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name !== "steam"));
+/** Split games into library (has any non-excluded tag) and steam (has steam tag) */
+export function splitGames(allGames: GameWithTags[], excludeTags: string[] = ["steam", "auto"]): { libraryGames: GameWithTags[]; steamGames: GameWithTags[] } {
+  const excl = new Set(excludeTags.map(t => t.toLowerCase()));
+  const libraryGames = allGames.filter((g) => g.tags && g.tags.some((t) => !excl.has(t.tag_name.toLowerCase())));
   const steamGames = allGames.filter((g) => g.tags && g.tags.some((t) => t.tag_name === "steam"));
   return { libraryGames, steamGames };
 }

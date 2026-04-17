@@ -44,6 +44,7 @@ export default function ClipboardPage() {
   const [wishMatch, setWishMatch] = useState<MatchResult>({ type: "none", games: [] });
   const lastClipRef = useRef("");
   const configRef = useRef<MatchConfig>(DEFAULT_MATCH_CONFIG);
+  const excludeTagsRef = useRef<string[]>(["steam", "auto"]);
 
   // Load all games + settings
   useEffect(() => {
@@ -56,10 +57,11 @@ export default function ClipboardPage() {
         fuzzyLimit: parseInt(s.clip_fuzzy_limit, 10) || DEFAULT_MATCH_CONFIG.fuzzyLimit,
         fuzzyThreshold: parseFloat(s.clip_fuzzy_threshold) || DEFAULT_MATCH_CONFIG.fuzzyThreshold,
       };
+      try { excludeTagsRef.current = JSON.parse(s.clip_exclude_tags || '["steam","auto"]'); } catch {}
     });
   }, []);
 
-  const { libraryGames, steamGames } = splitGames(allGames);
+  const { libraryGames, steamGames } = splitGames(allGames, excludeTagsRef.current);
 
   const processClip = (text: string) => {
     const t = text.trim();

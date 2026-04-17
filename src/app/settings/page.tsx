@@ -226,6 +226,14 @@ export default function SettingsPage() {
                   className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
               </label>
             </div>
+            <div className="mt-3">
+              <label className="text-xs text-muted">Exclude Tags from Library (comma-separated)</label>
+              <input type="text" value={(() => { try { return JSON.parse(settings.clip_exclude_tags || '["steam","auto"]').join(", "); } catch { return "steam, auto"; } })()}
+                onChange={(e) => update("clip_exclude_tags", JSON.stringify(e.target.value.split(",").map(s => s.trim()).filter(Boolean)))}
+                className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent"
+                placeholder="steam, auto" />
+              <p className="text-[9px] text-muted mt-1">Games with only these tags are treated as &quot;Steam/wishlist&quot; side, not &quot;Library&quot; side.</p>
+            </div>
           </div>
           </div>{/* end display tab */}
           {/* ═══ STEAM TAB part 2 ═══ */}
