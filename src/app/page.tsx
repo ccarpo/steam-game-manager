@@ -404,6 +404,14 @@ export default function Home() {
 
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
+      // Focus search on "/" (Google-style) without typing the slash
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
+      }
+
       // Auto-focus search on printable key
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         searchRef.current?.focus();
