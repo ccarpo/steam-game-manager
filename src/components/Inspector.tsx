@@ -416,6 +416,47 @@ const InspectorLayout = memo(function InspectorLayout({ data, onClose, tagsSlot,
   );
 });
 
+/** Inline editable field — click to edit, blur/Enter to save */
+function InlineEdit({ label, value, type = "text", color = "text-foreground", placeholder, step, min, max, onSave }: {
+  label: string; value: string | number | null | undefined; type?: "text" | "number";
+  color?: string; placeholder?: string; step?: number; min?: number; max?: number;
+  onSave: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value ?? ""));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setDraft(String(value ?? "")); }, [value]);
+  useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed !== String(value ?? "")) onSave(trimmed);
+  };
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span className={`text-[10px] ${color} font-bold`}>{label}</span>
+        <input ref={inputRef} type={type} value={draft} step={step} min={min} max={max}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(String(value ?? "")); setEditing(false); } }}
+          className="w-16 bg-background border border-accent rounded px-1 py-0 text-[10px] text-foreground focus:outline-none"
+          placeholder={placeholder} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`text-[10px] ${color} font-bold cursor-pointer hover:underline`}
+      onClick={() => setEditing(true)} title="Click to edit">
+      {label} {value ?? "—"}
+    </span>
+  );
+}
+
 // Main Inspector for DB games
 export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpdate, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, onSimilarClick, colorCoded, scoreSource, tintColors, recScore }: InspectorProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -502,7 +543,8 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
 
   const footerSlot = useMemo(() => (
     <>
-      {game.notes && <span className="text-[10px] text-muted truncate max-w-[200px]" title={game.notes}>{"\uD83D\uDCDD"} {game.notes}</span>}
+      <InlineEdit label="📝" value={game.notes || ""} type="text" placeholder="Notes..."
+        color="text-muted" onSave={(v) => onUpdate?.(game.id, { notes: v })} />
       {game.steam_appid && (
         <>
           <a href={`https://store.steampowered.com/app/${game.steam_appid}`} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">Steam {"\u2197"}</a>
@@ -514,7 +556,7 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
       <button onClick={handleDelete}
         className="text-xs px-3 py-1 rounded bg-danger/15 text-danger hover:bg-danger/25">Delete</button>
     </>
-  ), [game.notes, game.steam_appid, game.id, refreshing, handleRefreshMeta, handleEdit, handleDelete]);
+  ), [game.notes, game.steam_appid, game.id, refreshing, handleRefreshMeta, handleEdit, handleDelete, onUpdate]);
 
   // For inspector, use a more opaque tint so it's not too transparent
   const inspectorTint = useMemo(() => {
@@ -556,8 +598,10 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     return (
       <div className="space-y-1">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[10px] text-purple-400 font-bold">📋 Curation #{game.queue_position ?? "—"}</span>
-          <span className="text-[10px] text-amber-400 font-bold">⭐ Rating: {game.user_rating ?? "—"}</span>
+          <InlineEdit label="📋 Curation #" value={game.queue_position} type="number"
+            color="text-purple-400" onSave={(v) => onUpdate?.(game.id, { queue_position: v === "" ? null : Number(v) })} />
+          <InlineEdit label="⭐ Rating" value={game.user_rating} type="number" step={0.5} min={-10} max={10}
+            color="text-amber-400" onSave={(v) => onUpdate?.(game.id, { user_rating: v === "" ? null : Number(v) })} />
           <span className="text-[10px] text-cyan-400 font-bold">🎯 Rec: {hasRec ? Math.round(recScore!.score * 100) : "—"}</span>
         </div>
         {hasRec && (
@@ -578,7 +622,7 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
         )}
       </div>
     );
-  }, [recScore, game.queue_position, game.user_rating]);
+  }, [recScore, game.queue_position, game.user_rating, game.id, onUpdate]);
 
   const combinedSimilarSlot = useMemo(() => {
     if (!similarSlot && !recSlot) return null;

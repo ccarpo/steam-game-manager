@@ -55,6 +55,7 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
   const [saveError, setSaveError] = useState("");
   const [showSteamSearch, setShowSteamSearch] = useState(false);
   const [newSubtag, setNewSubtag] = useState<NewSubtagState | null>(null);
+  const [modalTab, setModalTab] = useState<"edit" | "meta">("edit");
   const modalRef = useRef<HTMLDivElement>(null);
   const handleSaveRef = useRef<() => void>(() => {});
 
@@ -214,30 +215,30 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div ref={modalRef} className="bg-surface rounded-lg p-5 space-y-3 overflow-y-auto"
+      <div ref={modalRef} className="bg-surface rounded-lg overflow-hidden flex flex-col"
         style={{ width: savedSize.current?.width || "28rem", height: savedSize.current?.height || undefined, maxWidth: "90vw", maxHeight: "85vh", resize: "both", minWidth: "20rem", minHeight: "300px" }}
         onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-medium">Edit Game</h3>
-
-        <label className="block text-xs text-muted">
-          Name
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent"
-          />
-        </label>
-
-        {/* Multiple tags — each row: tag | genre | meta */}
-        <div className="text-xs text-muted">
-          Tags
-          <div className="mt-1 mb-2">
-            <TagTextInput
-              tags={tags}
-              onAdd={addTagFromText}
-            />
+        {/* Header + tabs */}
+        <div className="shrink-0 px-5 pt-4 pb-0">
+          <h3 className="text-sm font-medium mb-2">Edit Game</h3>
+          <div className="flex gap-1 border-b border-border/50">
+            <button onClick={() => setModalTab("edit")}
+              className={`px-3 py-1 text-xs border-b-2 transition-colors ${modalTab === "edit" ? "border-accent text-accent font-medium" : "border-transparent text-muted hover:text-foreground"}`}>✏️ Edit</button>
+            <button onClick={() => setModalTab("meta")}
+              className={`px-3 py-1 text-xs border-b-2 transition-colors ${modalTab === "meta" ? "border-accent text-accent font-medium" : "border-transparent text-muted hover:text-foreground"}`}>📦 Metadata</button>
           </div>
+        </div>
+        {/* Scrollable content */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 space-y-3">
+
+        {/* ═══ EDIT TAB ═══ */}
+        {modalTab === "edit" && (<>
+          {/* Tags */}
+          <div className="text-xs text-muted">
+            Tags
+            <div className="mt-1 mb-2">
+              <TagTextInput tags={tags} onAdd={addTagFromText} />
+            </div>
           <div className="mt-1 space-y-2">
             {tagEntries.map((entry, i) => {
               const entrySubtags = typeof entry.tag_id === "number" ? (subtagsMap[entry.tag_id] || []) : [];
@@ -390,14 +391,55 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
           />
         </label>
 
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block text-xs text-muted">
+            Curation #
+            <input type="number" step="any" value={queuePosition} onChange={(e) => setQueuePosition(e.target.value)} placeholder="—"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+          </label>
+          <label className="block text-xs text-muted">
+            My Rating (-10 to 10)
+            <input type="number" min={-10} max={10} step={0.5} value={userRating} onChange={(e) => setUserRating(e.target.value)} placeholder="—"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+          </label>
+          <label className="block text-xs text-muted">
+            Added Date
+            <input type="text" value={addedAt} onChange={(e) => setAddedAt(e.target.value)} placeholder="2024-03-15"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+          </label>
+        </div>
+        </>)}
+
+        {/* ═══ METADATA TAB ═══ */}
+        {modalTab === "meta" && (<>
+        <label className="block text-xs text-muted">
+          Name
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+        </label>
+
+        <div className="text-xs text-muted">
+          Steam AppID
+          <div className="flex gap-2 mt-1">
+            <input type="text" value={steamAppid} onChange={(e) => setSteamAppid(e.target.value)} placeholder="e.g. 620"
+              className="flex-1 bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
+            <button type="button" onClick={() => setShowSteamSearch(true)}
+              className="bg-surface2 text-foreground px-3 py-1.5 rounded text-xs hover:bg-accent/20">🔍 Steam</button>
+          </div>
+          {steamAppid && (
+            <img src={`/api/assets/${steamAppid}/header.jpg`} alt="Steam header" className="mt-2 w-full rounded"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          )}
+        </div>
+
+        {showSteamSearch && (
+          <SteamSearch initialQuery={name} onSelect={handleSteamSelect} onClose={() => setShowSteamSearch(false)} />
+        )}
+
         <label className="block text-xs text-muted">
           Description
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent resize-y"
-          />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
+            className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent resize-y" />
         </label>
 
         <div className="grid grid-cols-2 gap-2">
@@ -423,21 +465,6 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
             <input type="text" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} placeholder="Mar 15, 2024"
               className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
           </label>
-          <label className="block text-xs text-muted">
-            Added Date
-            <input type="text" value={addedAt} onChange={(e) => setAddedAt(e.target.value)} placeholder="2024-03-15 12:00:00"
-              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
-          </label>
-          <label className="block text-xs text-muted">
-            Curation #
-            <input type="number" step="any" value={queuePosition} onChange={(e) => setQueuePosition(e.target.value)} placeholder="—"
-              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
-          </label>
-          <label className="block text-xs text-muted">
-            My Rating (-10 to 10)
-            <input type="number" min={-10} max={10} step={0.5} value={userRating} onChange={(e) => setUserRating(e.target.value)} placeholder="—"
-              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
-          </label>
         </div>
 
         {!steamAppid && game.id && (
@@ -455,8 +482,11 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
             >🔍 Scan folder</button>
           </div>
         )}
+        </>)}
 
-        <div className="flex justify-end gap-2 pt-2">
+        </div>{/* end scrollable content */}
+        {/* Footer — always visible */}
+        <div className="shrink-0 flex justify-end gap-2 px-5 py-3 border-t border-border/50">
           {saveError && <span className="text-xs text-danger flex-1">{saveError}</span>}
           <button onClick={onClose} className="text-muted text-sm hover:text-foreground">Cancel</button>
           <button

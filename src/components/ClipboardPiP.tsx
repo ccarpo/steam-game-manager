@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { GameWithTags } from "@/lib/types";
-import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches, splitGames } from "@/lib/clipboard-match";
+import { MatchResult, MatchConfig, DEFAULT_MATCH_CONFIG, findMatches } from "@/lib/clipboard-match";
 
 const COLORS = {
   exact: { bg: "#22c55e", label: "EXACT" },
@@ -11,96 +11,117 @@ const COLORS = {
   none: { bg: "#ef4444", label: "NOT FOUND" },
 };
 
+const TAG_COLORS: Record<string, string> = {
+  wishlist: "#60a5fa", owned: "#22c55e", played_elsewhere: "#a78bfa",
+  removed_from_wishlist: "#f87171", ignored: "#94a3b8",
+};
+
+function isLibrary(game: GameWithTags, excludeTags: Set<string>): boolean {
+  return (game.tags || []).some(t => !excludeTags.has(t.tag_name.toLowerCase()));
+}
+
 function drawCanvas(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   clipText: string,
-  libraryMatch: MatchResult,
-  wishlistMatch: MatchResult
+  match: MatchResult,
+  excludeTags: Set<string>,
 ) {
   const dpr = 2;
   ctx.canvas.width = width * dpr;
   ctx.canvas.height = height * dpr;
   ctx.scale(dpr, dpr);
 
-  // Scale: base 400px, smaller default font
   const s = Math.max(width / 400, 0.5);
   const headerH = Math.round(22 * s);
-  const statusH = Math.round(18 * s);
   const pad = Math.round(6 * s);
   const nameSize = Math.round(9 * s);
-  const tagSize = Math.round(7.5 * s);
-  const lineH = Math.round(12 * s);
+  const tagSize = Math.round(7 * s);
+  const lineH = Math.round(13 * s);
   const tagLineH = Math.round(10 * s);
-  const halfW = Math.floor(width / 2);
 
   // Background
   ctx.fillStyle = "#1a1a2e";
   ctx.fillRect(0, 0, width, height);
 
-  // Header (full width)
+  // Header
   ctx.fillStyle = "#0f0f23";
   ctx.fillRect(0, 0, width, headerH);
   ctx.fillStyle = "#e2e8f0";
   ctx.font = `bold ${Math.round(10 * s)}px system-ui, sans-serif`;
+  const color = COLORS[match.type];
   ctx.fillText(`📋 ${clipText}`, pad, headerH * 0.72);
+  // Status badge on right
+  const badgeText = `${color.label}${match.games.length > 0 ? ` (${match.games.length})` : ""}`;
+  ctx.font = `bold ${Math.round(7.5 * s)}px system-ui, sans-serif`;
+  const badgeW = ctx.measureText(badgeText).width + pad * 2;
+  ctx.fillStyle = color.bg + "60";
+  ctx.fillRect(width - badgeW - pad, Math.round(3 * s), badgeW, headerH - Math.round(6 * s));
+  ctx.fillStyle = color.bg;
+  ctx.fillText(badgeText, width - badgeW - pad + pad, headerH * 0.72);
 
-  // Divider line between columns
-  ctx.fillStyle = "#334155";
-  ctx.fillRect(halfW - 1, headerH, 1, height - headerH);
+  // Games list
+  let y = headerH + Math.round(4 * s);
+  ctx.font = `${nameSize}px system-ui, sans-serif`;
 
-  // Draw a column of matches
-  const drawColumn = (
-    x: number, colW: number, label: string, match: MatchResult
-  ) => {
-    const color = COLORS[match.type];
-    // Tint entire column background
-    ctx.fillStyle = color.bg + "40";
-    ctx.fillRect(x, headerH, colW, height - headerH);
-    // Status bar
-    ctx.fillStyle = color.bg;
-    ctx.fillRect(x, headerH, colW, statusH);
-    ctx.fillStyle = "#fff";
-    ctx.font = `bold ${Math.round(8 * s)}px system-ui, sans-serif`;
-    ctx.fillText(
-      `${label}: ${color.label}${match.games.length > 0 ? ` (${match.games.length})` : ""}`,
-      x + pad,
-      headerH + statusH * 0.72
-    );
+  if (match.games.length === 0) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = `${Math.round(8 * s)}px system-ui, sans-serif`;
+    ctx.fillText("No matches", pad, y + Math.round(10 * s));
+    return;
+  }
 
-    // Games
-    let y = headerH + statusH + Math.round(4 * s);
+  for (const game of match.games.slice(0, 8)) {
+    if (y + lineH > height - 2) break;
+    const inLib = isLibrary(game, excludeTags);
+
+    // Library highlight bar
+    if (inLib) {
+      ctx.fillStyle = "rgba(251,191,36,0.08)";
+      ctx.fillRect(0, y - Math.round(1 * s), width, lineH + tagLineH + Math.round(3 * s));
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillRect(0, y - Math.round(1 * s), Math.round(2 * s), lineH + tagLineH + Math.round(3 * s));
+    }
+
+    // Game name
+    ctx.fillStyle = "#e2e8f0";
     ctx.font = `${nameSize}px system-ui, sans-serif`;
-    for (const game of match.games.slice(0, 5)) {
-      if (y + lineH > height - 2) break;
-      ctx.fillStyle = "#e2e8f0";
-      ctx.fillText(game.name, x + pad, y + nameSize, colW - pad * 2);
-      y += lineH;
+    ctx.fillText(game.name, pad + Math.round(2 * s), y + nameSize, width - pad * 3);
+    y += lineH;
 
-      if (game.tags && game.tags.length > 0) {
-        if (y + tagLineH > height - 2) break;
-        ctx.fillStyle = "#94a3b8";
-        ctx.font = `${tagSize}px system-ui, sans-serif`;
-        const tagStr = game.tags
-          .map((t) => `${t.tag_name}${t.subtag_name ? ">" + t.subtag_name : ""}`)
-          .join(", ");
-        ctx.fillText(tagStr, x + pad + Math.round(4 * s), y + tagSize, colW - pad * 3);
-        y += tagLineH;
-        ctx.font = `${nameSize}px system-ui, sans-serif`;
+    // Tag badges
+    if (game.tags && game.tags.length > 0) {
+      if (y + tagLineH > height - 2) break;
+      let tx = pad + Math.round(4 * s);
+      ctx.font = `${tagSize}px system-ui, sans-serif`;
+      const steamSubs = game.tags.filter(t => t.tag_name === "steam").map(t => t.subtag_name).filter(Boolean);
+      const libTags = game.tags.filter(t => t.tag_name !== "steam" && t.tag_name !== "auto");
+      // Steam badges
+      for (const sub of steamSubs) {
+        if (tx > width - pad * 4) break;
+        const c = TAG_COLORS[sub || ""] || "#94a3b8";
+        ctx.fillStyle = c;
+        const tw = ctx.measureText(sub || "").width;
+        ctx.fillText(sub || "", tx, y + tagSize);
+        tx += tw + Math.round(6 * s);
       }
-      y += Math.round(2 * s);
+      // Library tags
+      const seen = new Set<string>();
+      for (const t of libTags) {
+        if (tx > width - pad * 4) break;
+        const key = t.subtag_name ? `${t.tag_name}>${t.subtag_name}` : t.tag_name;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ctx.fillStyle = "#fbbf24";
+        const tw = ctx.measureText(key).width;
+        ctx.fillText(key, tx, y + tagSize);
+        tx += tw + Math.round(6 * s);
+      }
+      y += tagLineH;
     }
-
-    if (match.type === "none") {
-      ctx.fillStyle = "#64748b";
-      ctx.font = `${Math.round(8 * s)}px system-ui, sans-serif`;
-      ctx.fillText("—", x + pad, y + Math.round(8 * s));
-    }
-  };
-
-  drawColumn(0, halfW - 1, "LIBRARY", libraryMatch);
-  drawColumn(halfW, width - halfW, "STEAM", wishlistMatch);
+    y += Math.round(2 * s);
+  }
 }
 
 interface ClipboardPiPProps {
@@ -113,12 +134,11 @@ export default function ClipboardPiP({ active }: ClipboardPiPProps) {
   const pipWindowRef = useRef<PictureInPictureWindow | null>(null);
   const lastClipRef = useRef("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const libMatchRef = useRef<MatchResult>({ type: "none", games: [] });
-  const wishMatchRef = useRef<MatchResult>({ type: "none", games: [] });
+  const matchRef = useRef<MatchResult>({ type: "none", games: [] });
   const [allGames, setAllGames] = useState<GameWithTags[]>([]);
   const configRef = useRef<MatchConfig>(DEFAULT_MATCH_CONFIG);
+  const excludeTagsRef = useRef<Set<string>>(new Set(["steam", "auto"]));
 
-  // Fetch ALL games + settings once
   useEffect(() => {
     if (!active) return;
     fetch("/api/games/all")
@@ -133,17 +153,14 @@ export default function ClipboardPiP({ active }: ClipboardPiPProps) {
           fuzzyLimit: parseInt(s.clip_fuzzy_limit, 10) || DEFAULT_MATCH_CONFIG.fuzzyLimit,
           fuzzyThreshold: parseFloat(s.clip_fuzzy_threshold) || DEFAULT_MATCH_CONFIG.fuzzyThreshold,
         };
+        try { excludeTagsRef.current = new Set(JSON.parse(s.clip_exclude_tags || '["steam","auto"]').map((t: string) => t.toLowerCase())); } catch {}
       })
       .catch(() => {});
   }, [active]);
 
-  // Split into library (has non-steam tags) vs steam
-  const { libraryGames, steamGames } = splitGames(allGames);
-
   const doMatch = useCallback((text: string) => {
-    libMatchRef.current = findMatches(text, libraryGames, configRef.current);
-    wishMatchRef.current = findMatches(text, steamGames, configRef.current);
-  }, [libraryGames, steamGames]);
+    matchRef.current = findMatches(text, allGames, configRef.current);
+  }, [allGames]);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -153,7 +170,7 @@ export default function ClipboardPiP({ active }: ClipboardPiPProps) {
     const pipW = pipWindowRef.current;
     const w = pipW ? pipW.width : 400;
     const h = pipW ? pipW.height : 225;
-    drawCanvas(ctx, w, h, lastClipRef.current || "(waiting...)", libMatchRef.current, wishMatchRef.current);
+    drawCanvas(ctx, w, h, lastClipRef.current || "(waiting...)", matchRef.current, excludeTagsRef.current);
   }, []);
 
   useEffect(() => {
