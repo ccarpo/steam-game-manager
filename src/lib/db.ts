@@ -62,6 +62,14 @@ export function flushAndBackup(opts?: { force?: boolean }): { backed_up: boolean
     fs.writeFileSync(path.join(backupFolder, "games.txt"), generateTxt(d));
     fs.writeFileSync(path.join(backupFolder, "games.csv"), generateCsv(d));
   } catch (e) { dbLog(`Export during backup failed: ${e}`); }
+  // Export scroller seen list if synced
+  try {
+    const seenRow = d.prepare("SELECT value FROM settings WHERE key = 'scroller_seen'").get() as { value: string } | undefined;
+    if (seenRow?.value) {
+      const arr = JSON.parse(seenRow.value) as string[];
+      if (arr.length > 0) fs.writeFileSync(path.join(backupFolder, "scroller_seen.txt"), arr.sort().join("\n") + "\n");
+    }
+  } catch (e) { dbLog(`Scroller seen export failed: ${e}`); }
   // Keep only last N backups per folder
   let maxBackups = 5;
   try {
