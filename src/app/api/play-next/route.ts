@@ -47,8 +47,8 @@ function buildProfile(playedGames: GameRow[], ctagWeightMode: "count" | "inverse
   const ctagFreq = new Map<string, number>();
 
   for (const g of playedGames) {
-    // user_rating 1-10 → multiplier 0.1-1.0. Unrated = 0.5 (neutral)
-    const w = g.user_rating ? g.user_rating / 10 : 0.5;
+    // user_rating -10 to 10 → multiplier -1.0 to 1.0. Unrated = 0.5 (neutral)
+    const w = g.user_rating != null ? g.user_rating / 10 : 0.5;
     for (const genre of safeJsonParse(g.steam_genres)) genreFreq.set(genre, (genreFreq.get(genre) || 0) + w);
     for (const d of parseDev(g.developers)) devFreq.set(d, (devFreq.get(d) || 0) + w);
     for (const t of safeJsonParse(g.community_tags)) ctagFreq.set(t, (ctagFreq.get(t) || 0) + w);
@@ -309,11 +309,11 @@ export async function GET() {
   // Normalize curation: position 1 = highest weight, max position = lowest
   const maxQueuePos = Math.max(...ratedOrCurated.map(g => g.queue_position ?? 0), 1);
   const ratedProfiles = ratedOrCurated.map(g => {
-    // Combine both signals: user_rating (0.1-1.0) and curation (inverted, 0.2-1.0)
-    const ratingW = g.user_rating ? g.user_rating / 10 : 0;
+    // Combine both signals: user_rating (-1.0 to 1.0) and curation (inverted, 0.2-1.0)
+    const ratingW = g.user_rating != null ? g.user_rating / 10 : 0;
     const curationW = g.queue_position != null ? Math.max(0.2, 1 - (g.queue_position - 1) / maxQueuePos) : 0;
-    // Take the max of both — if a game has both, the stronger signal wins
-    const weight = Math.max(ratingW, curationW) || 0.5;
+    // For negative ratings, use rating (penalty). For positive, take max of rating and curation.
+    const weight = ratingW < 0 ? ratingW : (Math.max(ratingW, curationW) || 0.5);
     return {
       genres: new Set(safeJsonParse(g.steam_genres)),
       ctags: new Set(safeJsonParse(g.community_tags)),

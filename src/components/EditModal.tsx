@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { GameWithTags, Tag, Subtag } from "@/lib/types";
 import SteamSearch from "./SteamSearch";
 import TagTextInput from "./TagTextInput";
@@ -55,11 +55,23 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
   const [saveError, setSaveError] = useState("");
   const [showSteamSearch, setShowSteamSearch] = useState(false);
   const [newSubtag, setNewSubtag] = useState<NewSubtagState | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const handleSaveRef = useRef<() => void>(() => {});
 
-  // Escape to close
+  // Load persisted modal size
+  const savedSize = useRef<{ width: string; height: string } | null>(null);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("gm_edit_modal_size");
+      if (s) savedSize.current = JSON.parse(s);
+    } catch {}
+  }, []);
+
+  // Escape to close, Ctrl+Enter to save
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSaveRef.current(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -158,6 +170,17 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
     } catch { /* ignore — user can fill manually */ }
   };
 
+  // Persist modal size on resize
+  useEffect(() => {
+    const el = modalRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      try { localStorage.setItem("gm_edit_modal_size", JSON.stringify({ width: el.style.width || el.offsetWidth + "px", height: el.style.height || el.offsetHeight + "px" })); } catch {}
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveError("");
@@ -187,10 +210,13 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
       setSaveError(String(err) || "Save failed");
     }
   };
+  handleSaveRef.current = handleSave;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-surface rounded-lg p-5 space-y-3 overflow-y-auto" style={{ width: "28rem", maxWidth: "90vw", maxHeight: "85vh", resize: "both", minWidth: "20rem", minHeight: "300px" }} onClick={(e) => e.stopPropagation()}>
+      <div ref={modalRef} className="bg-surface rounded-lg p-5 space-y-3 overflow-y-auto"
+        style={{ width: savedSize.current?.width || "28rem", height: savedSize.current?.height || undefined, maxWidth: "90vw", maxHeight: "85vh", resize: "both", minWidth: "20rem", minHeight: "300px" }}
+        onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-medium">Edit Game</h3>
 
         <label className="block text-xs text-muted">
@@ -408,8 +434,8 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
               className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
           </label>
           <label className="block text-xs text-muted">
-            My Rating (1-10)
-            <input type="number" min={1} max={10} step={0.5} value={userRating} onChange={(e) => setUserRating(e.target.value)} placeholder="—"
+            My Rating (-10 to 10)
+            <input type="number" min={-10} max={10} step={0.5} value={userRating} onChange={(e) => setUserRating(e.target.value)} placeholder="—"
               className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
           </label>
         </div>
@@ -438,7 +464,7 @@ export default function EditModal({ game, tags, onSave, onClose }: Props) {
             disabled={saving}
             className="bg-accent text-white px-4 py-1.5 rounded text-sm hover:bg-accent-hover disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : "Save (Ctrl+Enter)"}
           </button>
         </div>
       </div>
