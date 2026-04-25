@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { GameWithTags, Tag, Subtag, steamDbScore, TintColors, getScoreTint } from "@/lib/types";
 import Lightbox, { MediaItem } from "./Lightbox";
+import TagTextInput from "./TagTextInput";
 
 function safeJsonParse(str: string | null | undefined): string[] {
   if (!str) return [];
@@ -135,14 +136,33 @@ function getMovies(game: { id?: number; steam_appid?: number | null; movies?: st
   }));
 }
 
-// Tag display for DB games
-function TagDisplay({ game, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude }: {
+// Tag display for DB games — with inline add/remove
+function TagDisplay({ game, tags: allTags, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onUpdate }: {
   game: GameWithTags;
+  tags?: Tag[];
   onTagInclude?: (tagId: number) => void;
   onTagExclude?: (tagId: number) => void;
   onSubtagInclude?: (subtagId: number) => void;
   onSubtagExclude?: (subtagId: number) => void;
+  onUpdate?: (id: number, data: Record<string, unknown>) => Promise<void>;
 }) {
+  const handleRemoveTag = async (tagId: number, subtagId: number | null) => {
+    if (!onUpdate) return;
+    // Remove this specific tag entry and save remaining
+    const remaining = (game.tags || []).filter(t => !(t.tag_id === tagId && (subtagId ? t.subtag_id === subtagId : !t.subtag_id)));
+    const tagEntries = remaining.map(t => ({ tag_id: t.tag_id, subtag_id: t.subtag_id || null }));
+    await onUpdate(game.id, { tags: tagEntries });
+  };
+
+  const handleAddTag = async (tagId: number, subtagId: number | null) => {
+    if (!onUpdate) return;
+    // Add to existing tags
+    const existing = (game.tags || []).map(t => ({ tag_id: t.tag_id, subtag_id: t.subtag_id || null }));
+    // Avoid duplicates
+    if (existing.some(e => e.tag_id === tagId && e.subtag_id === subtagId)) return;
+    await onUpdate(game.id, { tags: [...existing, { tag_id: tagId, subtag_id: subtagId }] });
+  };
+
   return (
     <>
       <span className="text-[10px] text-muted block mb-1">Your Tags</span>
@@ -166,19 +186,35 @@ function TagDisplay({ game, onTagInclude, onTagExclude, onSubtagInclude, onSubta
                 <>
                   <span className="text-[9px] text-muted">›</span>
                   {g.subs.filter((s) => s.subtag_name).map((s) => (
-                    <span key={s.id} className="text-[10px] px-0.5 rounded cursor-pointer hover:ring-1 hover:ring-current"
+                    <span key={s.id} className="text-[10px] px-0.5 rounded cursor-pointer hover:ring-1 hover:ring-current inline-flex items-center gap-0.5"
                       style={{ backgroundColor: s.subtag_type === "meta" ? "#f59e0b18" : "#818cf818", color: s.subtag_type === "meta" ? "#f59e0b" : "#818cf8" }}
                       title="Click=include, Right-click=exclude"
                       onClick={() => s.subtag_id && onSubtagInclude?.(s.subtag_id)}
                       onContextMenu={(e) => { e.preventDefault(); s.subtag_id && onSubtagExclude?.(s.subtag_id); }}
-                    >{s.subtag_name}</span>
+                    >
+                      {s.subtag_name}
+                      {onUpdate && <button className="text-[8px] opacity-40 hover:opacity-100 hover:text-danger ml-0.5"
+                        onClick={(e) => { e.stopPropagation(); handleRemoveTag(g.tag_id, s.subtag_id); }}
+                        title="Remove this tag">×</button>}
+                    </span>
                   ))}
                 </>
+              )}
+              {/* × for tag-only entries (no subtag) */}
+              {onUpdate && !g.subs.some(s => s.subtag_name) && (
+                <button className="text-[8px] opacity-40 hover:opacity-100 hover:text-danger"
+                  onClick={(e) => { e.stopPropagation(); handleRemoveTag(g.tag_id, null); }}
+                  title="Remove this tag">×</button>
               )}
             </div>
           ));
         })() : <span className="text-[10px] text-muted italic">No tags</span>}
       </div>
+      {onUpdate && allTags && allTags.length > 0 && (
+        <div className="mt-1.5">
+          <TagTextInput tags={allTags} onAdd={handleAddTag} />
+        </div>
+      )}
     </>
   );
 }
@@ -534,9 +570,9 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     game.positive_percent, game.total_reviews, game.metacritic_score, game.review_sentiment,
     screenshots, fullScreenshots, movies, game.total_screenshots, game.total_movies, game.notes, aid, refreshKey, game.updated_at, recScore]);
 
-  const tagsSlot = useMemo(() => <TagDisplay game={game} onTagInclude={onTagInclude} onTagExclude={onTagExclude}
-    onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude} />,
-    [game, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude]);
+  const tagsSlot = useMemo(() => <TagDisplay game={game} tags={tags} onTagInclude={onTagInclude} onTagExclude={onTagExclude}
+    onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude} onUpdate={onUpdate} />,
+    [game, tags, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onUpdate]);
 
   const handleEdit = useCallback(() => onEdit(game), [onEdit, game]);
   const handleDelete = useCallback(() => { if (confirm("Delete this game?")) { onDelete(game.id); onClose(); } }, [onDelete, onClose, game.id]);
