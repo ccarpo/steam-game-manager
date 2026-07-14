@@ -566,7 +566,9 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
         color="text-muted" onSave={(v) => onUpdate?.(game.id, { notes: v })} />
       {game.steam_appid && (
         <>
+          <a href={`steam://run/${game.steam_appid}`} className="text-xs px-2 py-0.5 rounded bg-green-600/20 text-green-400 hover:bg-green-600/30 font-medium" title="Launch in Steam">▶ Play</a>
           <a href={`https://store.steampowered.com/app/${game.steam_appid}`} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">Steam {"\u2197"}</a>
+          <a href={`https://www.steamdb.info/app/${game.steam_appid}`} target="_blank" rel="noreferrer" className="text-xs text-muted hover:text-accent hover:underline">SteamDB {"\u2197"}</a>
           <button onClick={handleRefreshMeta} disabled={refreshing} className="text-[10px] text-muted hover:text-accent disabled:animate-spin" title="Refresh metadata">{"\u21BB"}</button>
         </>
       )}

@@ -181,6 +181,14 @@ export default function GameCard({ game, selected, slideshow, slideDelay = 1000,
             🎯{Math.round(recScore * 100)}
           </div>
         )}
+        {game.steam_appid && hovered && (
+          <a
+            href={`steam://run/${game.steam_appid}`}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/70 text-green-400 hover:bg-green-700/80 hover:text-white transition-colors"
+            title="Launch in Steam"
+          >▶</a>
+        )}
       </div>
 
       {/* Info */}
