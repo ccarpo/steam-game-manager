@@ -44,10 +44,15 @@ export async function GET() {
 
   // Top genres — via json_each() in SQLite
   const topGenres = db.prepare(`
-    SELECT j.value as name, COUNT(*) as count
+    SELECT
+      CASE
+        WHEN json_type(j.value) = 'object' THEN json_extract(j.value, '$.name')
+        ELSE j.value
+      END as name,
+    COUNT(*) as count
     FROM games, json_each(games.steam_genres) j
     WHERE games.steam_genres IS NOT NULL AND games.steam_genres != '[]'
-    GROUP BY j.value ORDER BY count DESC LIMIT 15
+    GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
   `).all() as { name: string; count: number }[];
 
   // Top community tags — objects {name,count} or plain strings; extract .name when value is JSON object
