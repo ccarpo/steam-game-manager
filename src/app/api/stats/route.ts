@@ -1,5 +1,4 @@
 import { getDb } from "@/lib/db";
-import { pushLog } from "@/lib/log-buffer";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -43,48 +42,60 @@ export async function GET() {
     GROUP BY s.id ORDER BY count DESC LIMIT 20
   `).all() as { tag: string; subtag: string; color: string; count: number }[];
 
-  // Top genres
-  const allGenres: Record<string, number> = {};
-  const rows = db.prepare("SELECT steam_genres FROM games WHERE steam_genres != '[]'").all() as { steam_genres: string }[];
-  for (const r of rows) {
-    try { for (const g of JSON.parse(r.steam_genres)) allGenres[g] = (allGenres[g] || 0) + 1; } catch (e) { pushLog("ERROR", `Stats genre parse: ${e}`); }
-  }
-  const topGenres = Object.entries(allGenres).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count }));
+  // Top genres — via json_each() in SQLite
+  const topGenres = db.prepare(`
+    SELECT j.value as name, COUNT(*) as count
+    FROM games, json_each(games.steam_genres) j
+    WHERE games.steam_genres IS NOT NULL AND games.steam_genres != '[]'
+    GROUP BY j.value ORDER BY count DESC LIMIT 15
+  `).all() as { name: string; count: number }[];
 
-  // Top community tags
-  const allCTags: Record<string, number> = {};
-  const cRows = db.prepare("SELECT community_tags FROM games WHERE community_tags != '[]'").all() as { community_tags: string }[];
-  for (const r of cRows) {
-    try { const arr = JSON.parse(r.community_tags); for (const t of arr) { const name = typeof t === "object" && t.name ? t.name : t; if (typeof name === "string") allCTags[name] = (allCTags[name] || 0) + 1; } } catch (e) { pushLog("ERROR", `Stats ctag parse: ${e}`); }
-  }
-  const topCommunityTags = Object.entries(allCTags).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count }));
+  // Top community tags — objects {name,count} or plain strings; extract .name when value is JSON object
+  const topCommunityTags = db.prepare(`
+    SELECT
+      CASE
+        WHEN json_type(j.value) = 'object' THEN json_extract(j.value, '$.name')
+        ELSE j.value
+      END as name,
+      COUNT(*) as count
+    FROM games, json_each(games.community_tags) j
+    WHERE games.community_tags IS NOT NULL AND games.community_tags != '[]'
+    GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
+  `).all() as { name: string; count: number }[];
 
-  // Top developers
-  const allDevs: Record<string, number> = {};
-  const dRows = db.prepare("SELECT developers FROM games WHERE developers != '' AND developers != '[]'").all() as { developers: string }[];
-  for (const r of dRows) {
-    try {
-      const arr = r.developers.startsWith("[") ? JSON.parse(r.developers) : r.developers.split(",").map((s: string) => s.trim());
-      for (const d of arr) if (d) allDevs[d] = (allDevs[d] || 0) + 1;
-    } catch (e) { pushLog("ERROR", `Stats dev parse: ${e}`); }
-  }
-  const topDevelopers = Object.entries(allDevs).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+  // Top developers — JSON array format via json_each(), comma-separated fallback in JS
+  const topDevelopers = db.prepare(`
+    SELECT trim(j.value) as name, COUNT(*) as count
+    FROM games, json_each(
+      CASE WHEN substr(trim(developers), 1, 1) = '[' THEN developers
+           ELSE json_array(trim(developers))
+      END
+    ) j
+    WHERE developers IS NOT NULL AND developers != '' AND developers != '[]'
+      AND trim(j.value) != ''
+    GROUP BY name ORDER BY count DESC LIMIT 10
+  `).all() as { name: string; count: number }[];
 
-  // By release year
-  const byYear: Record<string, number> = {};
-  const yRows = db.prepare("SELECT release_date FROM games WHERE release_date IS NOT NULL AND release_date != ''").all() as { release_date: string }[];
-  for (const r of yRows) {
-    const ym = r.release_date.match(/\b(19|20)\d{2}\b/);
-    const low = r.release_date.toLowerCase().trim();
-    let yr = "Unknown";
-    if (low === "coming soon" || low === "to be announced" || low === "tba") yr = "TBA";
-    else if (low.match(/^q[1-4]\s+\d{4}$/)) yr = low.slice(-4);
-    else if (ym) yr = ym[0];
-    byYear[yr] = (byYear[yr] || 0) + 1;
-  }
-  const releaseYears = Object.entries(byYear)
-    .sort((a, b) => { if (a[0] === "TBA") return 1; if (b[0] === "TBA") return -1; if (a[0] === "Unknown") return 1; if (b[0] === "Unknown") return -1; return a[0].localeCompare(b[0]); })
-    .map(([year, count]) => ({ year, count }));
+  // By release year — extract 4-digit year in SQLite using substr+instr patterns
+  const releaseYearsRaw = db.prepare(`
+    SELECT
+      CASE
+        WHEN lower(trim(release_date)) IN ('coming soon', 'to be announced', 'tba') THEN 'TBA'
+        WHEN lower(trim(release_date)) GLOB 'q[1-4] [0-9][0-9][0-9][0-9]' THEN substr(trim(release_date), -4)
+        WHEN release_date GLOB '*[12][0-9][0-9][0-9]*'
+          THEN substr(release_date, instr(release_date, substr(release_date, max(1, instr(release_date,'19') + instr(release_date,'20') - 1), 4)), 4)
+        ELSE 'Unknown'
+      END as year,
+      COUNT(*) as count
+    FROM games
+    WHERE release_date IS NOT NULL AND release_date != ''
+    GROUP BY year
+  `).all() as { year: string; count: number }[];
+  const releaseYears = releaseYearsRaw.sort((a, b) => {
+    if (a.year === "TBA") return 1; if (b.year === "TBA") return -1;
+    if (a.year === "Unknown") return 1; if (b.year === "Unknown") return -1;
+    return a.year.localeCompare(b.year);
+  });
 
   // Added over time (by month)
   const addedByMonth = db.prepare(`

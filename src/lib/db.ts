@@ -49,7 +49,9 @@ export function flushAndBackup(opts?: { force?: boolean }): { backed_up: boolean
   d.pragma("wal_checkpoint(TRUNCATE)");
   const force = opts?.force ?? false;
   if (!force && delta.length === 0) return { backed_up: false, delta };
-  const ts = new Date(Date.now() + 5.5 * 3600000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
   const baseDir = force ? path.join(BACKUP_DIR, "manual") : path.join(BACKUP_DIR, "auto");
   const backupFolder = path.join(baseDir, ts);
   if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder, { recursive: true });

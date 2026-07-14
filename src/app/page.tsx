@@ -3,26 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTags, useGames, useGenres, useSubtags, Filters } from "@/lib/hooks";
 import { GameWithTags, Tag, Subtag, COLOR_PRESETS, TintColors } from "@/lib/types";
+import { loadJson } from "@/lib/utils";
 import Sidebar from "@/components/Sidebar";
 import GameCard from "@/components/GameCard";
 import GameTable from "@/components/GameTable";
-import Inspector, { SteamPreview } from "@/components/Inspector";
+import Inspector from "@/components/Inspector";
 import EditModal from "@/components/EditModal";
 import ClipboardPiP from "@/components/ClipboardPiP";
-
-function loadPref<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
-}
-
-interface SteamResult {
-  appid: number;
-  name: string;
-  image: string;
-}
+import FilterChips from "@/components/FilterChips";
+import SteamResultsSection, { SteamResult } from "@/components/SteamResultsSection";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function Home() {
   const { tags } = useTags();
@@ -31,6 +21,7 @@ export default function Home() {
   const { genres, features, communityTags } = useGenres();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const sidebarDragging = useRef(false);
   const [selectedGame, setSelectedGame] = useState<GameWithTags | null>(null);
@@ -82,19 +73,19 @@ export default function Home() {
       const fresh = games.find((g) => g.id === selectedGame.id);
       if (fresh && fresh !== selectedGame) setSelectedGame(fresh);
     }
-  }, [games]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [games, inspectorGame, selectedGame]);
 
   // Hydrate persisted prefs after mount (avoids SSR hydration mismatch)
   // Try localStorage first, then fall back to DB prefs (for incognito)
   const hydratedRef = useRef(false);
   useEffect(() => {
-    const localView = loadPref<string | null>("gm_view", null);
+    const localView = loadJson<string | null>("gm_view", null);
     if (localView !== null) {
       // localStorage has data — use it (normal browsing)
-      setSidebarCollapsed(loadPref("gm_sidebar", false));
-      setSidebarWidth(loadPref("gm_sidebar_width", 256));
-      setView(loadPref("gm_view", "cards"));
-      setCardCols(loadPref("gm_cols", 6));
+      setSidebarCollapsed(loadJson("gm_sidebar", false));
+      setSidebarWidth(loadJson("gm_sidebar_width", 256));
+      setView(loadJson("gm_view", "cards"));
+      setCardCols(loadJson("gm_cols", 6));
       hydratedRef.current = true;
     } else {
       // No localStorage (incognito) — load from DB
@@ -307,14 +298,15 @@ export default function Home() {
     const seeded = localStorage.getItem("gm_not_on_steam_seeded");
     if (seeded) return;
     const notOnSteamIds = subtags.filter((s) => s.name === "not_on_steam").map((s) => s.id);
-    const exc = filters.excludeSubtags || [];
-    const missing = notOnSteamIds.filter((id) => !exc.includes(id));
-    if (missing.length > 0) {
-      setFilters({ ...filters, excludeSubtags: [...exc, ...missing] });
+    if (notOnSteamIds.length > 0) {
+      setFilters((prev) => {
+        const exc = prev.excludeSubtags || [];
+        const missing = notOnSteamIds.filter((id) => !exc.includes(id));
+        return missing.length > 0 ? { ...prev, excludeSubtags: [...exc, ...missing] } : prev;
+      });
     }
     localStorage.setItem("gm_not_on_steam_seeded", "1");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subtags]);
+  }, [subtags, setFilters]);
 
   // Tag filter toggles (shared by sidebar + card pills)
   const toggleIncTag = useCallback((id: number) => {
@@ -384,11 +376,10 @@ export default function Home() {
   // Sync search query to filters (for DB filtering)
   useEffect(() => {
     const timer = setTimeout(() => {
-      setFilters({ ...filters, search: searchQuery || undefined });
+      setFilters((prev) => ({ ...prev, search: searchQuery || undefined }));
     }, 300);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, setFilters]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -473,7 +464,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [selectedGame, inspectorGame, editingGame, similarStack, games, view]);
+  }, [selectedGame, inspectorGame, editingGame, similarStack, games, view, displayedGames, displayLimit]);
 
   // Click toggles inspector popup (and highlights)
   const handleSelectGame = (game: GameWithTags) => {
@@ -503,7 +494,8 @@ export default function Home() {
         id: gameId, name: result.name, steam_appid: result.appid,
         notes: "", description: "", steam_genres: "[]", steam_features: "[]",
         community_tags: "[]", developers: "", publishers: "", release_date: "",
-        screenshots: "[]", movies: "[]", tags: (data.games?.[0] as any)?.tags || [],
+        screenshots: "[]", movies: "[]",
+        tags: (data.games?.[0] as { id: number; name: string; tags?: GameWithTags["tags"] })?.tags || [],
       } as GameWithTags);
       // Fetch metadata in background, then refresh modal data
       if (result.appid) {
@@ -575,14 +567,17 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        tags={tags} subtags={subtags} genres={genres} features={features} communityTags={communityTags}
-        games={games} filters={filters} onChange={setFilters}
-        collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        width={sidebarWidth}
-      />
+      <ErrorBoundary label="Sidebar">
+        <Sidebar
+          tags={tags} subtags={subtags} genres={genres} features={features} communityTags={communityTags}
+          games={games} filters={filters} onChange={setFilters}
+          collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          width={sidebarWidth}
+          mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)}
+        />
+      </ErrorBoundary>
       {!sidebarCollapsed && (
-        <div className="w-1.5 shrink-0 cursor-col-resize flex items-center justify-center hover:bg-accent/20 active:bg-accent/30 transition-colors group"
+        <div className="hidden sm:flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent/20 active:bg-accent/30 transition-colors group"
           onMouseDown={onSidebarDragStart}>
           <div className="w-0.5 h-8 rounded bg-border group-hover:bg-accent/50 transition-colors" />
         </div>
@@ -590,8 +585,9 @@ export default function Home() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <div className="border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
-          <h1 className="text-sm font-semibold mr-2">🎮 Games</h1>
+        <div className="border-b border-border px-3 py-2 flex flex-wrap items-center gap-2 shrink-0">
+          <button className="sm:hidden text-muted hover:text-foreground text-lg leading-none" onClick={() => setMobileSidebarOpen(true)} title="Filters">☰</button>
+          <h1 className="text-sm font-semibold">🎮 Games</h1>
 
           <input
             ref={searchRef}
@@ -696,6 +692,7 @@ export default function Home() {
         )}
 
         {/* Main content area */}
+        <ErrorBoundary label="Game Grid">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 relative">
           {loading ? (
             <div className="text-center text-muted py-12">Loading games...</div>
@@ -704,7 +701,7 @@ export default function Home() {
           ) : view === "cards" ? (
             <>
               {displayedGames.length > 0 && (
-                <div className="game-grid-container grid gap-3" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                <div className="game-grid-container grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(max(140px, calc(100% / ${cardCols} - 12px)), 1fr))` }}>
                   {displayedGames.map((game) => (
                     <GameCard key={game.id} game={game} selected={selectedGame?.id === game.id} onClick={() => handleSelectGame(game)}
                       slideshow={slideshow} slideDelay={slideSpeed * 1000} pageFocused={pageFocused}
@@ -766,26 +763,29 @@ export default function Home() {
             </div>
           )}
         </div>
+        </ErrorBoundary>
       </div>
 
-      {inspectorGame && (
-        <Inspector game={inspectorGame} mode="popup" onClose={closeInspector} onEdit={setEditingGame} onDelete={deleteGame} tags={tags} onUpdate={updateGame}
-          colorCoded={colorCoded} scoreSource={scoreSource} tintColors={tintColors}
-          onTagInclude={toggleIncTag} onTagExclude={toggleExcTag}
-          onSubtagInclude={toggleIncSub} onSubtagExclude={toggleExcSub}
-          onGenreFilter={onGenreFilter}
-          onFeatureFilter={onFeatureFilter}
-          onCommunityTagFilter={onCommunityTagFilter}
-          recScore={playNextScores.get(inspectorGame.id) || null}
-          onSimilarClick={async (gameId) => {
-            const found = allGames.find((g) => g.id === gameId);
-            if (found) { setSimilarStack((s) => [...s, found]); return; }
-            try {
-              const res = await fetch(`/api/games/${gameId}`);
-              if (res.ok) { const g = await res.json(); setSimilarStack((s) => [...s, g]); }
-            } catch {}
-          }} />
-      )}
+      <ErrorBoundary label="Inspector">
+        {inspectorGame && (
+          <Inspector game={inspectorGame} mode="popup" onClose={closeInspector} onEdit={setEditingGame} onDelete={deleteGame} tags={tags} onUpdate={updateGame}
+            colorCoded={colorCoded} scoreSource={scoreSource} tintColors={tintColors}
+            onTagInclude={toggleIncTag} onTagExclude={toggleExcTag}
+            onSubtagInclude={toggleIncSub} onSubtagExclude={toggleExcSub}
+            onGenreFilter={onGenreFilter}
+            onFeatureFilter={onFeatureFilter}
+            onCommunityTagFilter={onCommunityTagFilter}
+            recScore={playNextScores.get(inspectorGame.id) || null}
+            onSimilarClick={async (gameId) => {
+              const found = allGames.find((g) => g.id === gameId);
+              if (found) { setSimilarStack((s) => [...s, found]); return; }
+              try {
+                const res = await fetch(`/api/games/${gameId}`);
+                if (res.ok) { const g = await res.json(); setSimilarStack((s) => [...s, g]); }
+              } catch {}
+            }} />
+        )}
+      </ErrorBoundary>
 
       {similarStack.map((sg, idx) => (
         <Inspector key={`similar-${sg.id}-${idx}`} game={sg} mode="popup"
@@ -837,232 +837,3 @@ export default function Home() {
   );
 }
 
-
-// Steam results section shown below local matches when searching
-function SteamResultsSection({ query, steamResults, steamLoading, existingAppIds, adding, onAddSteam, onAddManual, tags, onClickExisting }: {
-  query: string;
-  steamResults: SteamResult[];
-  steamLoading: boolean;
-  existingAppIds: Set<number | null>;
-  adding: boolean;
-  onAddSteam: (r: SteamResult, tagId?: number, subtagId?: number | null) => void;
-  onAddManual: (tagId?: number, subtagId?: number | null) => void;
-  tags: Tag[];
-  onClickExisting?: (appid: number) => void;
-}) {
-  return (
-    <div className="mt-6 space-y-3 max-w-4xl">
-      <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-2">
-        Steam results
-        {steamLoading && <span className="text-accent animate-pulse text-[10px]">searching...</span>}
-      </h2>
-      {steamResults.length > 0 ? (
-        <div className="space-y-1">
-          {steamResults.map((r) => (
-            <SteamResultRow key={r.appid} result={r} tags={tags}
-              alreadyExists={existingAppIds.has(r.appid)}
-              adding={adding} onAdd={onAddSteam} onClickExisting={onClickExisting} />
-          ))}
-        </div>
-      ) : !steamLoading && query.trim().length >= 2 && (
-        <div className="text-sm text-muted py-4 text-center bg-surface rounded-lg border border-border/50">
-          No Steam results for &quot;{query}&quot;
-        </div>
-      )}
-      <ManualAddRow query={query} tags={tags} adding={adding} onAdd={onAddManual} />
-    </div>
-  );
-}
-
-// Per-row Steam result with its own tag selector
-function SteamResultRow({ result, tags, alreadyExists, adding, onAdd, onClickExisting }: {
-  result: SteamResult; tags: Tag[]; alreadyExists: boolean; adding: boolean;
-  onAdd: (r: SteamResult) => void;
-  onClickExisting?: (appid: number) => void;
-}) {
-  const [showPreview, setShowPreview] = useState(false);
-
-  return (
-    <>
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent transition-colors cursor-pointer ${
-      alreadyExists ? "opacity-60 hover:opacity-90 bg-surface/50 hover:bg-surface2/30" : "bg-surface hover:bg-surface2/50"
-    }`} onClick={() => alreadyExists ? onClickExisting?.(result.appid) : setShowPreview(true)}>
-      <img src={result.image} alt="" className="w-24 h-[28px] object-cover rounded"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-      <div className="flex-1 min-w-0">
-        <span className="text-sm">{result.name}</span>
-        <span className="text-[10px] text-muted ml-2">AppID: {result.appid}</span>
-      </div>
-      {alreadyExists ? (
-        <span className="text-[10px] text-green-400">✓ in library</span>
-      ) : (
-        <>
-          <button onClick={(e) => { e.stopPropagation(); onAdd(result); }}
-            disabled={adding}
-            className="text-[10px] px-2 py-0.5 rounded border border-accent/50 text-accent hover:bg-accent/10 disabled:opacity-50"
-          >+ Add</button>
-          <span className="text-[10px] text-muted cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowPreview(true); }}>👁</span>
-        </>
-      )}
-    </div>
-    {showPreview && (
-      <SteamPreview
-        appid={result.appid} name={result.name} image={result.image}
-        onClose={() => setShowPreview(false)}
-        onAdd={() => { onAdd(result); setShowPreview(false); }}
-        tags={tags} adding={adding}
-      />
-    )}
-    </>
-  );
-}
-
-// Manual add with tag selector
-function ManualAddRow({ query, tags, adding, onAdd }: {
-  query: string; tags: Tag[]; adding: boolean;
-  onAdd: (tagId?: number, subtagId?: number | null) => void;
-}) {
-  const [tagId, setTagId] = useState<number | "">("");
-  const [subtags, setSubtags] = useState<Subtag[]>([]);
-  const [subtagId, setSubtagId] = useState<number | "">("");
-
-  useEffect(() => {
-    if (!tagId) { setSubtags([]); setSubtagId(""); return; }
-    fetch(`/api/subtags?tag_id=${tagId}`).then((r) => r.json()).then(setSubtags);
-  }, [tagId]);
-
-  return (
-    <div className="flex items-center gap-2">
-      <button onClick={() => onAdd(tagId || undefined, subtagId || null)} disabled={adding}
-        className="text-sm text-muted hover:text-foreground transition-colors disabled:opacity-50">
-        <span className="text-accent mr-1">+</span> Add &quot;{query}&quot; manually
-      </button>
-      <select value={tagId} onChange={(e) => setTagId(e.target.value ? Number(e.target.value) : "")}
-        className="bg-background border border-border rounded px-1.5 py-0.5 text-[10px]">
-        <option value="">No tag</option>
-        {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      {subtags.length > 0 && (
-        <select value={subtagId} onChange={(e) => setSubtagId(e.target.value ? Number(e.target.value) : "")}
-          className="bg-background border border-border rounded px-1.5 py-0.5 text-[10px]">
-          <option value="">No subtag</option>
-          {subtags.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      )}
-    </div>
-  );
-}
-
-// Active filter chips bar
-function FilterChips({ tags, subtags, filters, onChange, onClearSearch }: { tags: Tag[]; subtags: Subtag[]; filters: Filters; onChange: (f: Filters) => void; onClearSearch?: () => void }) {
-  const chips: { label: string; color: string; type: "include" | "exclude"; onRemove: () => void }[] = [];
-
-  for (const id of filters.includeTags || []) {
-    const tag = tags.find((t) => t.id === id);
-    if (tag) chips.push({
-      label: tag.name, color: tag.color, type: "include",
-      onRemove: () => onChange({ ...filters, includeTags: (filters.includeTags || []).filter((t) => t !== id) }),
-    });
-  }
-  for (const id of filters.excludeTags || []) {
-    const tag = tags.find((t) => t.id === id);
-    if (tag) chips.push({
-      label: tag.name, color: "#ef4444", type: "exclude",
-      onRemove: () => onChange({ ...filters, excludeTags: (filters.excludeTags || []).filter((t) => t !== id) }),
-    });
-  }
-
-  for (const id of filters.includeSubtags || []) {
-    const sub = subtags.find((s) => s.id === id);
-    if (sub) {
-      const parent = tags.find((t) => t.id === sub.tag_id);
-      chips.push({
-        label: parent ? `${parent.name}>${sub.name}` : sub.name, color: sub.type === "genre" ? "#6366f1" : "#f59e0b", type: "include",
-        onRemove: () => onChange({ ...filters, includeSubtags: (filters.includeSubtags || []).filter((t) => t !== id) }),
-      });
-    }
-  }
-  for (const id of filters.excludeSubtags || []) {
-    const sub = subtags.find((s) => s.id === id);
-    if (sub) {
-      const parent = tags.find((t) => t.id === sub.tag_id);
-      chips.push({
-        label: parent ? `${parent.name}>${sub.name}` : sub.name, color: "#ef4444", type: "exclude",
-        onRemove: () => onChange({ ...filters, excludeSubtags: (filters.excludeSubtags || []).filter((t) => t !== id) }),
-      });
-    }
-  }
-
-  const addStringChips = (items: string[] | undefined, type: "include" | "exclude", prefix: string, filterKey: keyof Filters) => {
-    for (const val of items || []) {
-      chips.push({
-        label: `${prefix}: ${val}`, color: type === "include" ? "#6366f1" : "#ef4444", type,
-        onRemove: () => onChange({ ...filters, [filterKey]: ((filters[filterKey] as string[]) || []).filter((v) => v !== val) }),
-      });
-    }
-  };
-
-  addStringChips(filters.includeGenres, "include", "Genre", "includeGenres");
-  addStringChips(filters.excludeGenres, "exclude", "Genre", "excludeGenres");
-  addStringChips(filters.includeFeatures, "include", "Feature", "includeFeatures");
-  addStringChips(filters.excludeFeatures, "exclude", "Feature", "excludeFeatures");
-  addStringChips(filters.includeCommunityTags, "include", "CTag", "includeCommunityTags");
-  addStringChips(filters.excludeCommunityTags, "exclude", "CTag", "excludeCommunityTags");
-  addStringChips(filters.includeDevelopers, "include", "Dev", "includeDevelopers");
-  addStringChips(filters.excludeDevelopers, "exclude", "Dev", "excludeDevelopers");
-  addStringChips(filters.includePublishers, "include", "Pub", "includePublishers");
-  addStringChips(filters.excludePublishers, "exclude", "Pub", "excludePublishers");
-
-  if (filters.untagged) {
-    chips.push({ label: "Untagged only", color: "#f59e0b", type: "include",
-      onRemove: () => onChange({ ...filters, untagged: false }) });
-  }
-  if (filters.withNotes) {
-    chips.push({ label: "With notes", color: "#6366f1", type: "include",
-      onRemove: () => onChange({ ...filters, withNotes: false }) });
-  }
-  if (filters.hideWishlistOnly) {
-    chips.push({ label: "Curated only", color: "#6366f1", type: "include",
-      onRemove: () => onChange({ ...filters, hideWishlistOnly: false }) });
-  }
-  if (filters.scoreMin !== undefined || filters.scoreMax !== undefined) {
-    chips.push({ label: `Score: ${filters.scoreMin ?? 0}–${filters.scoreMax ?? 100}%`, color: "#22c55e", type: "include",
-      onRemove: () => onChange({ ...filters, scoreMin: undefined, scoreMax: undefined }) });
-  }
-  if (filters.reviewsMin !== undefined || filters.reviewsMax !== undefined) {
-    chips.push({ label: `Reviews: ${filters.reviewsMin ?? 0}–${filters.reviewsMax ?? "∞"}`, color: "#8b5cf6", type: "include",
-      onRemove: () => onChange({ ...filters, reviewsMin: undefined, reviewsMax: undefined }) });
-  }
-
-  if (chips.length === 0) return null;
-
-  return (
-    <div className="px-4 py-1.5 border-b border-border flex flex-wrap gap-1 items-center shrink-0">
-      <span className="text-[10px] text-muted mr-1">Active:</span>
-      {chips.map((chip, i) => (
-        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]"
-          style={{
-            backgroundColor: chip.color + "18", border: `1px solid ${chip.color}40`, color: chip.color,
-            textDecoration: chip.type === "exclude" ? "line-through" : undefined,
-          }}>
-          {chip.type === "exclude" && "−"}{chip.label}
-          <button onClick={chip.onRemove} className="hover:opacity-70 ml-0.5 font-bold" style={{ color: chip.color }}>×</button>
-        </span>
-      ))}
-      <button onClick={() => {
-        let def: Partial<Filters> = {};
-        try { const raw = localStorage.getItem("gm_default_filters"); if (raw) def = JSON.parse(raw); } catch {}
-        onChange({
-          ...filters, includeTags: [], excludeTags: def.excludeTags || [], includeSubtags: [], excludeSubtags: def.excludeSubtags || [],
-          includeGenres: [], excludeGenres: def.excludeGenres || [],
-          includeFeatures: [], excludeFeatures: def.excludeFeatures || [], includeCommunityTags: [], excludeCommunityTags: def.excludeCommunityTags || [],
-          includeDevelopers: [], excludeDevelopers: def.excludeDevelopers || [], includePublishers: [], excludePublishers: def.excludePublishers || [],
-          untagged: false, withNotes: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, search: undefined,
-        }); onClearSearch?.(); }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
-      <button onClick={() => {
-        const { search, sort, sorts, dir, ...rest } = filters;
-        localStorage.setItem("gm_default_filters", JSON.stringify(rest));
-      }} className="text-[10px] text-muted hover:text-foreground hover:underline ml-1" title="Save current excludes as default for Clear All">Set default</button>
-    </div>
-  );
-}

@@ -2,22 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { GameWithTags, steamDbScore, TintColors, getScoreTint, getPrimaryScore, scoreColor } from "@/lib/types";
-
-function safeJsonParse(str: string | null | undefined): string[] {
-  if (!str) return [];
-  try {
-    const parsed = JSON.parse(str);
-    if (!Array.isArray(parsed)) return [];
-    if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0].name) return parsed.map((t: { name: string }) => t.name);
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function assetId(game: GameWithTags): string {
-  return game.steam_appid ? String(game.steam_appid) : `manual_${game.id}`;
-}
+import { safeJsonParse, assetId } from "@/lib/utils";
 
 function getScreenshots(game: GameWithTags): string[] {
   const aid = assetId(game);

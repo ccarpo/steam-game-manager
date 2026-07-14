@@ -2,26 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { GameWithTags, Tag, Subtag, steamDbScore, TintColors, getScoreTint } from "@/lib/types";
+import { safeJsonParse, formatDate } from "@/lib/utils";
 import Lightbox, { MediaItem } from "./Lightbox";
 import TagTextInput from "./TagTextInput";
-
-function safeJsonParse(str: string | null | undefined): string[] {
-  if (!str) return [];
-  try {
-    const parsed = JSON.parse(str);
-    if (!Array.isArray(parsed)) return [];
-    if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0].name) return parsed.map((t: { name: string }) => t.name);
-    return parsed;
-  } catch { return []; }
-}
-
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso + "T00:00:00");
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }).replace(/ /g, " ");
-  } catch { return iso || ""; }
-}
 
 interface LayoutData {
   name: string;

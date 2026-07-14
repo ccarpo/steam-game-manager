@@ -2,16 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { GameWithTags, Tag, steamDbScore, TintColors, getScoreTint } from "@/lib/types";
-
-function safeJsonParse(str: string | null | undefined): string[] {
-  if (!str) return [];
-  try { const p = JSON.parse(str); if (!Array.isArray(p)) return []; if (p.length > 0 && typeof p[0] === "object" && p[0].name) return p.map((t: { name: string }) => t.name); return p; } catch { return []; }
-}
-
-function loadJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
-}
+import { safeJsonParse, loadJson } from "@/lib/utils";
 
 type SortDir = "asc" | "desc";
 interface SortEntry { key: string; dir: SortDir }

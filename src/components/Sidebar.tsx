@@ -32,11 +32,14 @@ interface Props {
   collapsed: boolean;
   onToggleCollapse: () => void;
   width?: number;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export default function Sidebar({
   tags, subtags, genres, features, communityTags, games,
   filters, onChange, collapsed, onToggleCollapse, width = 256,
+  mobileOpen = false, onMobileClose,
 }: Props) {
   const [search, setSearch] = useState("");
   const [expandedTagIds, setExpandedTagIds] = useState<Set<number>>(new Set());
@@ -268,7 +271,7 @@ export default function Sidebar({
 
   if (collapsed) {
     return (
-      <div className="w-10 bg-surface border-r border-border flex flex-col items-center py-3 shrink-0">
+      <div className="hidden sm:flex w-10 bg-surface border-r border-border flex-col items-center py-3 shrink-0">
         <button onClick={onToggleCollapse} className="text-muted hover:text-foreground text-lg" title="Expand">&#x25B8;</button>
       </div>
     );
@@ -503,9 +506,21 @@ export default function Sidebar({
   // ═══════════════════════════════════════════
   // CLASSIC ACCORDION LAYOUT
   // ═══════════════════════════════════════════
+  const mobileOverlay = mobileOpen ? (
+    <div className="sm:hidden fixed inset-0 z-50 flex" onClick={onMobileClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="relative bg-surface flex flex-col overflow-hidden" style={{ width: Math.min(width, 320) }} onClick={(e) => e.stopPropagation()}>
+        {headerBar}{searchBar}{quickFilters}
+        <div className="flex-1 overflow-y-auto min-h-0">{customTagsContent}</div>
+      </div>
+    </div>
+  ) : null;
+
   if (layout === "classic") {
     return (
-      <div className="bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden" style={{ width }}>
+      <>
+        {mobileOverlay}
+        <div className="hidden sm:flex bg-surface border-r border-border flex-col shrink-0 overflow-hidden" style={{ width }}>
         {headerBar}
         {searchBar}
         <div className="flex-1 overflow-y-auto">
@@ -587,6 +602,7 @@ export default function Sidebar({
           </div>
         </div>
       </div>
+      </>
     );
   }
 
@@ -600,7 +616,9 @@ export default function Sidebar({
   };
 
   return (
-    <div className="bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden" style={{ width }}>
+    <>
+      {mobileOverlay}
+      <div className="hidden sm:flex bg-surface border-r border-border flex-col shrink-0 overflow-hidden" style={{ width }}>
       {headerBar}
       {searchBar}
       {quickFilters}
@@ -714,7 +732,8 @@ export default function Sidebar({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

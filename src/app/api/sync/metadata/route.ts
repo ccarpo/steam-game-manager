@@ -391,7 +391,7 @@ function rebuildOneGame(
         }));
         totalMov = movies.length;
       }
-    } catch {}
+    } catch (e) { console.error(`[metadata] appdetails parse error for appid ${appid}:`, e); }
   }
 
   let sent = "", pct = 0, total = 0;
@@ -403,11 +403,11 @@ function rebuildOneGame(
         total = rv.query_summary.total_positive + rv.query_summary.total_negative;
         pct = total > 0 ? Math.round((rv.query_summary.total_positive / total) * 100) : 0;
       }
-    } catch {}
+    } catch (e) { console.error(`[metadata] reviews parse error for appid ${appid}:`, e); }
   }
 
   if (cached.store_page_tags) {
-    try { ctags = JSON.parse(cached.store_page_tags); } catch {}
+    try { ctags = JSON.parse(cached.store_page_tags); } catch (e) { console.error(`[metadata] store_page_tags parse error for appid ${appid}:`, e); }
   }
 
   db.prepare(`UPDATE games SET name = COALESCE(?, name), description = ?, steam_genres = ?, steam_features = ?, community_tags = ?,

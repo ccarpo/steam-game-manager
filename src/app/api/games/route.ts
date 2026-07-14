@@ -6,7 +6,7 @@ import path from "path";
 
 const ASSETS_DIR = path.join(process.cwd(), "data", "assets", "games");
 
-// GET /api/games — list games with filtering
+/** @deprecated Use GET /api/games/all for client-side filtering instead. This server-side filtered endpoint is no longer used by the UI. */
 export function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const search = sp.get("search") || "";
