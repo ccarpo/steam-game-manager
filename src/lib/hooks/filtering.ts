@@ -129,7 +129,7 @@ export function filterGames(allGames: GameWithTags[], filters: Filters): GameWit
     includeCommunityTags = [], excludeCommunityTags = [],
     includeDevelopers = [], excludeDevelopers = [],
     includePublishers = [], excludePublishers = [],
-    untagged, withNotes, metadataMissing, hideWishlistOnly, filterMode = "AND",
+    untagged, withNotes, withRating, metadataMissing, hideWishlistOnly, filterMode = "AND",
     customTagMode = "AND",
   } = filters;
 
