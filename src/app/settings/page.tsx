@@ -157,6 +157,12 @@ export default function SettingsPage() {
             <p className="text-xs text-muted mb-3">Cache public Steam libraries for comparison. Your API key stays on this device.</p>
             <FriendLibraries />
           </div>
+
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-steamdb">
+            <h2 className="text-sm font-medium mb-1">🛠️ Manual SteamDB Metadata</h2>
+            <p className="text-xs text-muted mb-3">Use the bookmarklet on a SteamDB app page, then paste the copied metadata below. This is a manual fallback for delisted or region-restricted apps.</p>
+            <SteamDbImport />
+          </div>
           </div>{/* end steam tab part 1 */}
           {/* ═══ DISPLAY TAB ═══ */}
           <div className={activeTab !== "display" ? "hidden" : "space-y-6"}>
@@ -1464,6 +1470,52 @@ function ShareLinks({ lanIps }: { lanIps: string[] }) {
       {tokens.length === 0 && (
         <p className="text-xs text-muted">No share links yet.</p>
       )}
+    </div>
+  );
+}
+
+function SteamDbImport() {
+  const [payload, setPayload] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const bookmarklet = `javascript:(()=>{const app=document.querySelector('.scope-app');const appid=app?.dataset.appid||location.pathname.match(/app\\/(\\d+)/)?.[1];const cell=(label)=>{const row=[...document.querySelectorAll('.table tr')].find((tr)=>tr.querySelector('td')?.textContent?.trim().startsWith(label));return row?.querySelectorAll('td')[1]?.textContent?.trim()||''};const values=(selector)=>[...document.querySelectorAll(selector)].map((el)=>el.getAttribute('content')||el.textContent?.trim()||'').filter(Boolean);const data={source:'steamdb-bookmarklet',appid:Number(appid),name:document.querySelector('h1[itemprop=name]')?.textContent?.trim()||'',developers:values('[itemprop=author]'),publishers:values('[itemprop=publisher]'),release_date:document.querySelector('relative-time[itemprop=datePublished]')?.getAttribute('content')||cell('Release Date'),features:[...document.querySelectorAll('.header-thing-categories a[aria-label]')].map((el)=>el.getAttribute('aria-label')).filter(Boolean),community_tags:[...document.querySelectorAll('.header-app-tags a')].map((el)=>(el.textContent||'').replace(/^\\S+\\s*/,'').trim()).filter(Boolean),header_image:document.querySelector('.app-logo[itemprop=image]')?.getAttribute('src')||''};navigator.clipboard.writeText(JSON.stringify(data,null,2)).then(()=>alert('SteamDB metadata copied. Paste it into Steam Game Manager.')).catch(()=>prompt('Copy this metadata:',JSON.stringify(data,null,2)))})();`;
+
+  const copyBookmarklet = async () => {
+    await navigator.clipboard.writeText(bookmarklet);
+    setStatus("Bookmarklet copied. Create a browser bookmark and paste it as its URL.");
+  };
+
+  const pasteClipboard = async () => {
+    try { setPayload(await navigator.clipboard.readText()); } catch { setStatus("Clipboard access was denied. Paste the copied JSON manually."); }
+  };
+
+  const importMetadata = async () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(payload); } catch { setStatus("The pasted data is not valid JSON."); return; }
+    setImporting(true);
+    setStatus(null);
+    try {
+      const response = await fetch("/api/steamdb/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "SteamDB metadata import failed.");
+      setStatus(`Imported SteamDB metadata for App ID ${body.appid}${body.header_downloaded ? " and downloaded its header" : ""}.`);
+      setPayload("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "SteamDB metadata import failed.");
+    } finally { setImporting(false); }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button onClick={copyBookmarklet} className="px-3 py-1.5 rounded text-xs border border-accent text-accent hover:bg-accent/10">📋 Copy Bookmarklet</button>
+        <button onClick={pasteClipboard} className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground">Paste Clipboard</button>
+        <button onClick={importMetadata} disabled={importing || !payload.trim()} className="px-3 py-1.5 rounded text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 disabled:opacity-50">{importing ? "Importing…" : "Import Metadata"}</button>
+      </div>
+      <p className="text-[10px] text-muted">Copy the bookmarklet, save it as a browser bookmark, run it on a SteamDB app page, then paste its JSON here.</p>
+      <textarea value={payload} onChange={(event) => setPayload(event.target.value)} rows={4} placeholder='Paste SteamDB bookmarklet JSON here'
+        className="w-full bg-background border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-accent" />
+      {status && <p className="text-xs text-muted">{status}</p>}
     </div>
   );
 }
