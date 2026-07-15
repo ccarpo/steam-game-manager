@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, use } from "react";
 import Link from "next/link";
 import { COLOR_PRESETS, TintColors, hexToRgba } from "@/lib/types";
 
@@ -8,7 +8,9 @@ type MetaStatus = { totalGames: number; cached: { appdetails: number; reviews: n
 type SubtagRow = { id: number; tag_id: number; name: string; type: string; tag_name: string };
 type ShareToken = { token: string; name: string; filter_json: string; created_at: string; expires_at: string | null };
 
-export default function SettingsPage() {
+/** Settings page with tabbed configuration sections. */
+export default function SettingsPage({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {
+  const params = searchParams ? use(searchParams) : null;
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [syncLog, setSyncLog] = useState<string[]>([]);
@@ -17,13 +19,7 @@ export default function SettingsPage() {
   const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null);
   const [showIgnoredInput, setShowIgnoredInput] = useState(false);
   const [lanIps, setLanIps] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== "undefined") {
-      const t = new URLSearchParams(window.location.search).get("tab");
-      if (t) return t;
-    }
-    return "steam";
-  });
+  const [activeTab, setActiveTab] = useState(params?.tab || "steam");
   const logRef = useRef<HTMLDivElement>(null);
   const appendLog = useCallback((msg: string) => { setSyncLog((prev) => [...prev, msg]); }, []);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [syncLog]);
@@ -877,6 +873,12 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
   const [showInfo, setShowInfo] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
+  // Three categories: played (training), priority (boost), exclude (hidden)
+  const [played, setPlayed] = useState<string[]>(["done", "played_elsewhere"]);
+  const [priority, setPriority] = useState<{ subtag: string; boost: number }[]>([{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]);
+  const [excludes, setExcludes] = useState<string[]>(["hide", "not_my_type"]);
+  const [genrePrefs, setGenrePrefs] = useState<{ tag: string; value: number }[]>([]);
+
   // Sync state from settings when they arrive (settings load async)
   useEffect(() => {
     if (!settings.rec_weights && !settings.rec_ctag_mode && !settings.rec_sweet_spot) return; // not loaded yet
@@ -909,14 +911,8 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
     }).catch(() => {});
   }, []);
 
-  // Three categories: played (training), priority (boost), exclude (hidden)
-  const [played, setPlayed] = useState<string[]>(["done", "played_elsewhere"]);
-  const [priority, setPriority] = useState<{ subtag: string; boost: number }[]>([{ subtag: "next", boost: 30 }, { subtag: "franchise", boost: 20 }]);
-  const [excludes, setExcludes] = useState<string[]>(["hide", "not_my_type"]);
-
   const [newPrioBoost, setNewPrioBoost] = useState(20);
   const [profileData, setProfileData] = useState<{ playedCount: number; genres: { name: string; weight: number }[]; devs: { name: string; weight: number }[]; ctags: { name: string; weight: number }[] } | null>(null);
-  const [genrePrefs, setGenrePrefs] = useState<{ tag: string; value: number }[]>([]);
   const [newGenrePrefTag, setNewGenrePrefTag] = useState("");
   const [newGenrePrefValue, setNewGenrePrefValue] = useState(50);
 
@@ -945,7 +941,7 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
     setExcludes(["hide", "not_my_type"]);
   };
 
-  const chipClass = (color: string) => `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border`;
+  const chipClass = (_color: string) => `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border`;
 
   return (
     <div className="bg-surface rounded-lg p-4 border border-border" id="section-recommendation">

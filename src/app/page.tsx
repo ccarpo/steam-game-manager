@@ -690,7 +690,7 @@ export default function Home() {
             className="px-2 py-1 text-xs rounded border bg-background border-border text-muted hover:text-foreground"
             title="Share current collection"
           >🔗</button>
-          <a href="/compare" className="text-xs text-muted hover:text-foreground" title="Compare friend libraries">👥</a>
+          <a href="/compare" className="px-2 py-1 text-xs rounded border bg-background border-border text-muted hover:text-foreground" title="Compare friend libraries">Compare</a>
           <a href="/stats" className="text-xs text-muted hover:text-foreground" title="Stats">📊</a>
           <a href="/settings" className="text-xs text-muted hover:text-foreground">⚙️</a>
         </div>

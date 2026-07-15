@@ -17,11 +17,13 @@ interface Stats {
   sentiments: { sentiment: string; count: number }[];
 }
 
+/** Render a horizontal bar scaled to the maximum value. */
 function Bar({ value, max, color = "#6366f1" }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0;
   return <div className="flex-1 h-4 bg-border/30 rounded overflow-hidden"><div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: color }} /></div>;
 }
 
+/** Render a titled stat section card. */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-surface rounded-lg p-4 border border-border">
@@ -37,6 +39,7 @@ const SENTIMENT_COLORS: Record<string, string> = {
   "Negative": "#ef4444", "Very Negative": "#dc2626", "Overwhelmingly Negative": "#991b1b",
 };
 
+/** Library statistics page. */
 export default function StatsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -61,7 +64,10 @@ export default function StatsPage() {
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-lg font-semibold">📊 Library Stats</h1>
-          <Link href="/" className="text-xs text-muted hover:text-foreground">← Back</Link>
+          <div className="flex items-center gap-3">
+            <Link href="/compare" className="px-2 py-1 text-xs rounded border bg-background border-border text-muted hover:text-foreground" title="Compare friend libraries">Compare</Link>
+            <Link href="/" className="text-xs text-muted hover:text-foreground">← Back</Link>
+          </div>
         </div>
 
         {/* Overview cards */}

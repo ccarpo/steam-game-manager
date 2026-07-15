@@ -1,8 +1,10 @@
 import { getDb } from "@/lib/db";
+import { extractYear } from "@/lib/release-tag";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+/** GET /api/stats — return aggregated library statistics. */
 export async function GET() {
   const db = getDb();
 
@@ -42,67 +44,82 @@ export async function GET() {
     GROUP BY s.id ORDER BY count DESC LIMIT 20
   `).all() as { tag: string; subtag: string; color: string; count: number }[];
 
-  // Top genres — via json_each() in SQLite
+  // Top genres — via json_each() in SQLite; normalize case/whitespace to avoid duplicate keys
   const topGenres = db.prepare(`
-    SELECT
-      CASE
-        WHEN substr(trim(j.value),1,1) = '{' THEN json_extract(j.value, '$.name')
-        ELSE j.value
-      END as name,
-    COUNT(*) as count
-    FROM games, json_each(games.steam_genres) j
-    WHERE games.steam_genres IS NOT NULL AND games.steam_genres != '[]'
-      AND json_valid(games.steam_genres)
-    GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
+    WITH labels AS (
+      SELECT CASE
+        WHEN substr(trim(j.value),1,1) = '{' THEN trim(json_extract(j.value, '$.name'))
+        ELSE trim(j.value)
+      END AS label
+      FROM games, json_each(games.steam_genres) j
+      WHERE games.steam_genres IS NOT NULL AND games.steam_genres != '[]'
+        AND json_valid(games.steam_genres)
+    )
+    SELECT MIN(label) AS name, COUNT(*) AS count
+    FROM labels
+    WHERE label IS NOT NULL AND label != ''
+    GROUP BY lower(label)
+    ORDER BY count DESC, name COLLATE NOCASE
+    LIMIT 15
   `).all() as { name: string; count: number }[];
 
   // Top community tags — objects {name,count} or plain strings; extract .name when value is JSON object
   const topCommunityTags = db.prepare(`
-    SELECT
-      CASE
-        WHEN substr(trim(j.value),1,1) = '{' THEN json_extract(j.value, '$.name')
-        ELSE j.value
-      END as name,
-      COUNT(*) as count
-    FROM games, json_each(games.community_tags) j
-    WHERE games.community_tags IS NOT NULL AND games.community_tags != '[]'
-      AND json_valid(games.community_tags)
-    GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
+    WITH labels AS (
+      SELECT CASE
+        WHEN substr(trim(j.value),1,1) = '{' THEN trim(json_extract(j.value, '$.name'))
+        ELSE trim(j.value)
+      END AS label
+      FROM games, json_each(games.community_tags) j
+      WHERE games.community_tags IS NOT NULL AND games.community_tags != '[]'
+        AND json_valid(games.community_tags)
+    )
+    SELECT MIN(label) AS name, COUNT(*) AS count
+    FROM labels
+    WHERE label IS NOT NULL AND label != ''
+    GROUP BY lower(label)
+    ORDER BY count DESC, name COLLATE NOCASE
+    LIMIT 15
   `).all() as { name: string; count: number }[];
 
   // Top developers — JSON array format via json_each(), comma-separated fallback in JS
   const topDevelopers = db.prepare(`
-    SELECT trim(j.value) as name, COUNT(*) as count
-    FROM games, json_each(
-      CASE WHEN substr(trim(developers), 1, 1) = '[' THEN developers
-           ELSE json_array(trim(developers))
-      END
-    ) j
-    WHERE developers IS NOT NULL AND developers != '' AND developers != '[]'
-      AND trim(j.value) != ''
-    GROUP BY name ORDER BY count DESC LIMIT 10
+    WITH labels AS (
+      SELECT trim(j.value) AS label
+      FROM games, json_each(
+        CASE WHEN substr(trim(developers), 1, 1) = '[' THEN developers
+             ELSE json_array(trim(developers))
+        END
+      ) j
+      WHERE developers IS NOT NULL AND developers != '' AND developers != '[]'
+        AND trim(j.value) != ''
+    )
+    SELECT MIN(label) AS name, COUNT(*) AS count
+    FROM labels
+    WHERE label IS NOT NULL AND label != ''
+    GROUP BY lower(label)
+    ORDER BY count DESC, name COLLATE NOCASE
+    LIMIT 10
   `).all() as { name: string; count: number }[];
 
-  // By release year — extract 4-digit year in SQLite using substr+instr patterns
-  const releaseYearsRaw = db.prepare(`
-    SELECT
-      CASE
-        WHEN lower(trim(release_date)) IN ('coming soon', 'to be announced', 'tba') THEN 'TBA'
-        WHEN lower(trim(release_date)) GLOB 'q[1-4] [0-9][0-9][0-9][0-9]' THEN substr(trim(release_date), -4)
-        WHEN release_date GLOB '*[12][0-9][0-9][0-9]*'
-          THEN substr(release_date, instr(release_date, substr(release_date, max(1, instr(release_date,'19') + instr(release_date,'20') - 1), 4)), 4)
-        ELSE 'Unknown'
-      END as year,
-      COUNT(*) as count
+  // By release year — aggregate using the same parser as auto-tags
+  const releaseYearRows = db.prepare(`
+    SELECT release_date, COUNT(*) as count
     FROM games
     WHERE release_date IS NOT NULL AND release_date != ''
-    GROUP BY year
-  `).all() as { year: string; count: number }[];
-  const releaseYears = releaseYearsRaw.sort((a, b) => {
-    if (a.year === "TBA") return 1; if (b.year === "TBA") return -1;
-    if (a.year === "Unknown") return 1; if (b.year === "Unknown") return -1;
-    return a.year.localeCompare(b.year);
-  });
+    GROUP BY release_date
+  `).all() as { release_date: string; count: number }[];
+  const yearCounts = new Map<string, number>();
+  for (const { release_date, count } of releaseYearRows) {
+    const year = extractYear(release_date);
+    yearCounts.set(year, (yearCounts.get(year) || 0) + count);
+  }
+  const releaseYears = [...yearCounts.entries()]
+    .map(([year, count]) => ({ year, count }))
+    .sort((a, b) => {
+      if (a.year === "TBA") return 1; if (b.year === "TBA") return -1;
+      return a.year.localeCompare(b.year);
+    });
 
   // Added over time (by month)
   const addedByMonth = db.prepare(`
