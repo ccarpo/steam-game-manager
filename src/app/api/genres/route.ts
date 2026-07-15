@@ -3,17 +3,20 @@ import { NextResponse } from "next/server";
 
 function countFromColumn(db: ReturnType<typeof getDb>, column: string): { name: string; count: number }[] {
   return db.prepare(`
-    SELECT
-      CASE
-        WHEN substr(trim(j.value),1,1) = '{' THEN trim(json_extract(j.value, '$.name'))
+    WITH labels AS (
+      SELECT CASE
+        WHEN substr(trim(j.value), 1, 1) = '{' THEN trim(json_extract(j.value, '$.name'))
         ELSE trim(j.value)
-      END as name,
-      COUNT(*) as count
-    FROM games, json_each(games.${column}) j
-    WHERE games.${column} IS NOT NULL AND games.${column} != '[]' AND games.${column} != ''
-      AND json_valid(games.${column})
-    GROUP BY name HAVING name IS NOT NULL AND name != ''
-    ORDER BY count DESC
+      END AS label
+      FROM games, json_each(games.${column}) j
+      WHERE games.${column} IS NOT NULL AND games.${column} != '[]' AND games.${column} != ''
+        AND json_valid(games.${column})
+    )
+    SELECT MIN(label) AS name, COUNT(*) AS count
+    FROM labels
+    WHERE label IS NOT NULL AND label != ''
+    GROUP BY lower(label)
+    ORDER BY count DESC, name COLLATE NOCASE
   `).all() as { name: string; count: number }[];
 }
 

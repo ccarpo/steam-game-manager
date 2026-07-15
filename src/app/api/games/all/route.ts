@@ -5,7 +5,20 @@ import { NextResponse } from "next/server";
 export function GET() {
   const db = getDb();
 
-  const games = db.prepare("SELECT * FROM games ORDER BY name").all();
+  const games = db.prepare("SELECT * FROM games ORDER BY name").all() as { id: number; steam_appid: number | null; tags?: unknown[]; metadata_missing?: boolean }[];
+  const metadataCache = new Map<number, string>();
+  for (const row of db.prepare("SELECT appid, appdetails FROM steam_cache WHERE appdetails IS NOT NULL AND appdetails != ''").all() as { appid: number; appdetails: string }[]) {
+    metadataCache.set(row.appid, row.appdetails);
+  }
+  for (const game of games) {
+    if (!game.steam_appid) continue;
+    try {
+      const payload = JSON.parse(metadataCache.get(game.steam_appid) || "") as Record<string, { success?: boolean }>;
+      game.metadata_missing = payload[String(game.steam_appid)]?.success !== true;
+    } catch {
+      game.metadata_missing = true;
+    }
+  }
 
   // Fetch all game_tags in one query
   const tagRows = db.prepare(
@@ -21,7 +34,7 @@ export function GET() {
     if (!tagMap.has(row.game_id)) tagMap.set(row.game_id, []);
     tagMap.get(row.game_id)!.push(row);
   }
-  for (const game of games as { id: number; tags?: unknown[] }[]) {
+  for (const game of games) {
     game.tags = tagMap.get(game.id) || [];
   }
 

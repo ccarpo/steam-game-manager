@@ -25,6 +25,7 @@ export interface Filters {
   untagged?: boolean;
   withNotes?: boolean;
   withRating?: boolean;
+  metadataMissing?: boolean;
   hideWishlistOnly?: boolean;
   filterMode?: "AND" | "OR";
   customTagMode?: "AND" | "OR";
@@ -128,7 +129,7 @@ export function filterGames(allGames: GameWithTags[], filters: Filters): GameWit
     includeCommunityTags = [], excludeCommunityTags = [],
     includeDevelopers = [], excludeDevelopers = [],
     includePublishers = [], excludePublishers = [],
-    untagged, withNotes, hideWishlistOnly, filterMode = "AND",
+    untagged, withNotes, metadataMissing, hideWishlistOnly, filterMode = "AND",
     customTagMode = "AND",
   } = filters;
 
@@ -153,6 +154,7 @@ export function filterGames(allGames: GameWithTags[], filters: Filters): GameWit
 
     if (withNotes && !(game.notes && game.notes.trim())) return false;
     if (filters.withRating && game.user_rating == null) return false;
+    if (metadataMissing && !game.metadata_missing) return false;
 
     if (filters.scoreMin !== undefined || filters.scoreMax !== undefined) {
       const score = game.total_reviews > 0 ? steamDbScore(game.positive_percent, game.total_reviews) : 0;

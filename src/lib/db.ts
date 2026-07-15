@@ -221,6 +221,14 @@ function initSchema(db: Database.Database) {
       games_json  TEXT NOT NULL,
       fetched_at  TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS steam_cache (
+      appid INTEGER PRIMARY KEY,
+      appdetails TEXT,
+      reviews TEXT,
+      store_page_tags TEXT,
+      fetched_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add type column to subtags if missing

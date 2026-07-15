@@ -561,7 +561,7 @@ export default function Home() {
     (filters.excludeDevelopers?.length || 0) > 0 ||
     (filters.includePublishers?.length || 0) > 0 ||
     (filters.excludePublishers?.length || 0) > 0 ||
-    filters.untagged || filters.withNotes || filters.hideWishlistOnly ||
+    filters.untagged || filters.withNotes || filters.metadataMissing || filters.hideWishlistOnly ||
     filters.scoreMin !== undefined || filters.scoreMax !== undefined ||
     filters.reviewsMin !== undefined || filters.reviewsMax !== undefined || isSearching;
 

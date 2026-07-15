@@ -78,6 +78,10 @@ export default function FilterChips({ tags, subtags, filters, onChange, onClearS
     chips.push({ label: "With notes", color: "#6366f1", type: "include",
       onRemove: () => onChange({ ...filters, withNotes: false }) });
   }
+  if (filters.metadataMissing) {
+    chips.push({ label: "Metadata missing", color: "#eab308", type: "include",
+      onRemove: () => onChange({ ...filters, metadataMissing: false }) });
+  }
   if (filters.hideWishlistOnly) {
     chips.push({ label: "Curated only", color: "#6366f1", type: "include",
       onRemove: () => onChange({ ...filters, hideWishlistOnly: false }) });
@@ -114,7 +118,7 @@ export default function FilterChips({ tags, subtags, filters, onChange, onClearS
           includeGenres: [], excludeGenres: def.excludeGenres || [],
           includeFeatures: [], excludeFeatures: def.excludeFeatures || [], includeCommunityTags: [], excludeCommunityTags: def.excludeCommunityTags || [],
           includeDevelopers: [], excludeDevelopers: def.excludeDevelopers || [], includePublishers: [], excludePublishers: def.excludePublishers || [],
-          untagged: false, withNotes: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, search: undefined,
+          untagged: false, withNotes: false, metadataMissing: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, search: undefined,
         }); onClearSearch?.();
       }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
       <button onClick={() => {

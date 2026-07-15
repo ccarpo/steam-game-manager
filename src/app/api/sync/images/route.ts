@@ -160,8 +160,9 @@ export async function POST(request: Request) {
           const tasks: Promise<boolean>[] = [];
 
           // Header — use actual URL from appdetails (Steam CDN paths include hashes)
-          if (dlHeaders && !existing.has("header.jpg") && cachedData?.header_image) {
-            tasks.push(downloadFile(cachedData.header_image.split("?")[0], path.join(dir, "header.jpg")));
+          if (dlHeaders && !existing.has("header.jpg")) {
+            const headerUrl = cachedData?.header_image?.split("?")[0] || `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
+            tasks.push(downloadFile(headerUrl, path.join(dir, "header.jpg")));
           }
 
           // Screenshots — use URLs from games table, fall back to cache

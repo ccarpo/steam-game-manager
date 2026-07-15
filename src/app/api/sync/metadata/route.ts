@@ -5,8 +5,8 @@ export const maxDuration = 300;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchJson(url: string): Promise<unknown | null> {
-  try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+async function fetchJson(url: string, init?: RequestInit): Promise<unknown | null> {
+  try { const r = await fetch(url, init); return r.ok ? await r.json() : null; } catch { return null; }
 }
 
 async function fetchStorePage(appid: number): Promise<string | null> {
@@ -47,6 +47,16 @@ type CacheRow = {
   reviews: string | null; store_page_tags: string | null;
 };
 
+function hasFailedAppDetails(value: string | null, appid: number): boolean {
+  if (!value) return false;
+  try {
+    const data = JSON.parse(value) as Record<string, { success?: boolean }>;
+    return data[String(appid)]?.success === false;
+  } catch {
+    return false;
+  }
+}
+
 function ensureTables() {
   const db = getDb();
   db.exec(`CREATE TABLE IF NOT EXISTS steam_cache (
@@ -84,9 +94,23 @@ async function fetchOneSource(
   appid: number, src: Source,
 ): Promise<void> {
   if (src === "appdetails") {
-    const result = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`);
+    let result = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`);
     if (!result) throw new Error("rate_limit");
-    upsertCacheCol(db, cacheMap, appid, "appdetails", JSON.stringify(result));
+
+    let value = JSON.stringify(result);
+    if (hasFailedAppDetails(value, appid)) {
+      const fallback = await fetchJson(
+        `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=us&l=english`,
+        { headers: { Cookie: "birthtime=0; wants_mature_content=1; lastagecheckage=1-0-1990" } },
+      );
+      if (fallback) {
+        result = fallback;
+        value = JSON.stringify(result);
+      }
+    }
+
+    upsertCacheCol(db, cacheMap, appid, "appdetails", value);
+    if (hasFailedAppDetails(value, appid)) throw new Error("appdetails_unavailable");
   } else if (src === "reviews") {
     const result = await fetchJson(`https://store.steampowered.com/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=0`);
     upsertCacheCol(db, cacheMap, appid, "reviews", JSON.stringify(result));
@@ -115,6 +139,8 @@ export async function GET() {
     const r = db.prepare(`SELECT COUNT(*) as c FROM steam_cache WHERE ${src} IS NOT NULL AND ${src} != ''`).get() as { c: number };
     cacheStats[src] = r.c;
   }
+  const failedAppDetails = (db.prepare("SELECT appid, appdetails FROM steam_cache WHERE appdetails IS NOT NULL AND appdetails != ''").all() as { appid: number; appdetails: string }[])
+    .filter((row) => hasFailedAppDetails(row.appdetails, row.appid)).length;
 
   return Response.json({
     totalGames,
@@ -123,6 +149,7 @@ export async function GET() {
       reviews: cacheStats.reviews,
       community: cacheStats.store_page_tags,
     },
+    failedAppDetails,
     sessions: Object.fromEntries(sessions.map((s) => [s.source, s])),
   });
 }
@@ -131,15 +158,16 @@ export async function GET() {
  * POST /api/sync/metadata
  * Query params:
  *   source=appdetails|reviews|community|all (default: all)
- *   mode=missing|resume|fresh
+ *   mode=missing|failed|resume|fresh
  *     missing = only fetch games with no cache for this source (default, always resumable)
+ *     failed  = retry cached appdetails responses with success:false
  *     resume  = continue an interrupted re-fetch-all session
  *     fresh   = start a new re-fetch-all session from scratch
  */
 export async function POST(req: Request) {
   const url = new URL(req.url);
   const sourceParam = url.searchParams.get("source") || "all";
-  const mode = (url.searchParams.get("mode") || "missing") as "missing" | "resume" | "fresh";
+  const mode = (url.searchParams.get("mode") || "missing") as "missing" | "failed" | "resume" | "fresh";
   const sources: Source[] = sourceParam === "all"
     ? ["appdetails", "reviews", "community"]
     : [sourceParam as Source];
@@ -239,6 +267,10 @@ export async function POST(req: Request) {
                 const cached = cacheMap.get(g.steam_appid);
                 return !cached || !cached[col];
               });
+            } else if (mode === "failed") {
+              needsFetch = src === "appdetails"
+                ? allGames.filter((g) => hasFailedAppDetails(cacheMap.get(g.steam_appid)?.appdetails || null, g.steam_appid))
+                : [];
             } else if (mode === "resume") {
               const session = db.prepare("SELECT * FROM sync_sessions WHERE source = ?").get(src) as {
                 last_appid: number | null; status: string; done: number;

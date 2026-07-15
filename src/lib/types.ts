@@ -19,6 +19,7 @@ export interface Game {
   name: string;
   steam_appid: number | null;
   steam_image_url: string | null;
+  metadata_missing?: boolean;
   description: string;
   notes: string;
   steam_genres: string; // JSON array string — dev-assigned genres (Action, RPG, etc.)

@@ -44,6 +44,7 @@ export default function Sidebar({
   const [search, setSearch] = useState("");
   const [expandedTagIds, setExpandedTagIds] = useState<Set<number>>(new Set());
   const [steamTab, setSteamTab] = useState<SteamTab>("genres");
+  //const [steamSort, setSteamSort] = useState<SortMode>("alpha");
   const [steamSort, setSteamSort] = useState<SortMode>("count");
   const [tagSort, setTagSort] = useState<TagSortMode>(() => loadPref<TagSortMode>("gm_tag_sort", "count"));
   const [tagOrder, setTagOrder] = useState<number[]>(() => loadPref<number[]>("gm_tag_order", []));
@@ -333,6 +334,9 @@ export default function Sidebar({
       <button onClick={() => onChange({ ...filters, withRating: !filters.withRating })}
         className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.withRating ? "bg-accent/20 text-accent" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
       >⭐ With rating</button>
+      <button onClick={() => onChange({ ...filters, metadataMissing: !filters.metadataMissing })}
+        className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.metadataMissing ? "bg-yellow-500/20 text-yellow-300" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
+      >⚠️ Metadata missing</button>
       <button onClick={() => onChange({ ...filters, hideWishlistOnly: !filters.hideWishlistOnly })}
         className={`w-full text-left px-2 py-0.5 rounded text-[11px] ${filters.hideWishlistOnly ? "bg-accent/20 text-accent" : "text-muted hover:text-foreground hover:bg-surface2/50"}`}
       >🎯 Curated only</button>

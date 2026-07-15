@@ -4,7 +4,7 @@ import Link from "next/link";
 import { COLOR_PRESETS, TintColors, hexToRgba } from "@/lib/types";
 
 type SessionInfo = { source: string; started_at: string; total: number; done: number; failed: number; last_appid: number | null; status: string };
-type MetaStatus = { totalGames: number; cached: { appdetails: number; reviews: number; community: number }; sessions: Record<string, SessionInfo> };
+type MetaStatus = { totalGames: number; cached: { appdetails: number; reviews: number; community: number }; failedAppDetails: number; sessions: Record<string, SessionInfo> };
 type SubtagRow = { id: number; tag_id: number; name: string; type: string; tag_name: string };
 type ShareToken = { token: string; name: string; filter_json: string; created_at: string; expires_at: string | null };
 
@@ -377,6 +377,12 @@ export default function SettingsPage() {
               <SyncBtn label="Reviews" color="green" running={syncRunning} id="meta-miss-rev" onClick={() => runSync("/api/sync/metadata?source=reviews&mode=missing", "meta-miss-rev")} />
               <SyncBtn label="Community" color="green" running={syncRunning} id="meta-miss-ct" onClick={() => runSync("/api/sync/metadata?source=community&mode=missing", "meta-miss-ct")} />
             </div>
+            {(metaStatus?.failedAppDetails ?? 0) > 0 && (
+              <div className="flex items-center gap-2 mb-3 rounded border border-yellow-500/30 bg-yellow-500/5 px-2.5 py-2">
+                <span className="text-[10px] text-yellow-300">{metaStatus!.failedAppDetails} App Details response{metaStatus!.failedAppDetails === 1 ? "" : "s"} returned <code>{"{\"success\":false}"}</code>.</span>
+                <SyncBtn label="↻ Retry failed" color="yellow" running={syncRunning} id="meta-retry-failed" onClick={() => runSync("/api/sync/metadata?source=appdetails&mode=failed", "meta-retry-failed")} />
+              </div>
+            )}
             {/* Re-fetch all per source with session info */}
             <div className="text-[10px] text-muted mb-1">Re-fetch all (overwrites cache):</div>
             {(["appdetails", "reviews", "community"] as const).map((src) => {
