@@ -682,6 +682,15 @@ export default function Home() {
           >🖼</button>
 
           {lanIps.length > 0 && <span className="text-[10px] text-muted">{lanIps[0]}:3000</span>}
+          <button
+            onClick={() => {
+              const filterJson = encodeURIComponent(JSON.stringify(filters));
+              window.open(`/settings?tab=system&share_filter=${filterJson}`, "_self");
+            }}
+            className="px-2 py-1 text-xs rounded border bg-background border-border text-muted hover:text-foreground"
+            title="Share current collection"
+          >🔗</button>
+          <a href="/compare" className="text-xs text-muted hover:text-foreground" title="Compare friend libraries">👥</a>
           <a href="/stats" className="text-xs text-muted hover:text-foreground" title="Stats">📊</a>
           <a href="/settings" className="text-xs text-muted hover:text-foreground">⚙️</a>
         </div>

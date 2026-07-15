@@ -6,6 +6,7 @@ import { COLOR_PRESETS, TintColors, hexToRgba } from "@/lib/types";
 type SessionInfo = { source: string; started_at: string; total: number; done: number; failed: number; last_appid: number | null; status: string };
 type MetaStatus = { totalGames: number; cached: { appdetails: number; reviews: number; community: number }; sessions: Record<string, SessionInfo> };
 type SubtagRow = { id: number; tag_id: number; name: string; type: string; tag_name: string };
+type ShareToken = { token: string; name: string; filter_json: string; created_at: string; expires_at: string | null };
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -16,7 +17,13 @@ export default function SettingsPage() {
   const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null);
   const [showIgnoredInput, setShowIgnoredInput] = useState(false);
   const [lanIps, setLanIps] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState("steam");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== "undefined") {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t) return t;
+    }
+    return "steam";
+  });
   const logRef = useRef<HTMLDivElement>(null);
   const appendLog = useCallback((msg: string) => { setSyncLog((prev) => [...prev, msg]); }, []);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [syncLog]);
@@ -143,6 +150,12 @@ export default function SettingsPage() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="bg-surface rounded-lg p-4 border border-border" id="section-friends">
+            <h2 className="text-sm font-medium mb-1">👥 Friend Libraries</h2>
+            <p className="text-xs text-muted mb-3">Cache public Steam libraries for comparison. Your API key stays on this device.</p>
+            <FriendLibraries />
           </div>
           </div>{/* end steam tab part 1 */}
           {/* ═══ DISPLAY TAB ═══ */}
@@ -535,6 +548,13 @@ export default function SettingsPage() {
               }}
               className="px-3 py-1.5 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors"
             >🗑 Reset UI Preferences</button>
+          </div>
+
+          {/* Share Links */}
+          <div className="bg-surface rounded-lg border border-border p-4" id="section-share">
+            <h2 className="text-sm font-semibold mb-1">🔗 Share Links</h2>
+            <p className="text-xs text-muted mb-4">Create read-only shareable URLs for filtered game collections.</p>
+            <ShareLinks lanIps={lanIps} />
           </div>
 
           {/* System Log — only on small screens, large screens use sticky panel */}
@@ -1302,6 +1322,200 @@ function TagManager() {
         localStorage.setItem("gm_tag_order", JSON.stringify(order));
         fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "tag_order", value: JSON.stringify(order) }) });
       }} className="mt-2 text-[10px] text-accent hover:underline">💾 Save sidebar order</button>
+    </div>
+  );
+}
+
+function ShareLinks({ lanIps }: { lanIps: string[] }) {
+  const [tokens, setTokens] = useState<ShareToken[]>([]);
+  const [newName, setNewName] = useState("");
+  const [newFilterJson, setNewFilterJson] = useState("{}");
+  const [expiryDays, setExpiryDays] = useState<number>(0);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const baseUrl = typeof window !== "undefined"
+    ? (lanIps.length > 0 ? `http://${lanIps[0]}:3000` : window.location.origin)
+    : "";
+
+  const load = () => {
+    fetch("/api/share").then(r => r.json()).then((rows: ShareToken[]) => setTokens(rows)).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("share_filter") : null;
+    if (raw) { try { setNewFilterJson(raw); } catch { /* ignore */ } }
+  }, []);
+
+  const create = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, filter_json: newFilterJson, expires_in_days: expiryDays || undefined }),
+      });
+      if (res.ok) { setNewName(""); setNewFilterJson("{}"); load(); }
+    } finally { setCreating(false); }
+  };
+
+  const revoke = async (token: string) => {
+    if (!confirm("Revoke this share link? It will stop working immediately.")) return;
+    await fetch(`/api/share/${token}`, { method: "DELETE" });
+    load();
+  };
+
+  const copyUrl = async (token: string) => {
+    const url = `${baseUrl}/share/${token}`;
+    await navigator.clipboard.writeText(url).catch(() => {});
+    setCopied(token);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const EXPIRY_OPTIONS = [
+    { label: "Never", value: 0 },
+    { label: "7 days", value: 7 },
+    { label: "30 days", value: 30 },
+    { label: "90 days", value: 90 },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Create form */}
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Collection name</span>
+          <input
+            type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g. My Wishlist"
+            className="bg-background border border-border rounded px-2 py-1 text-xs w-44 focus:outline-none focus:border-accent"
+            onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted">Expires</span>
+          <select value={expiryDays} onChange={(e) => setExpiryDays(Number(e.target.value))}
+            className="bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-accent">
+            {EXPIRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
+          <span className="text-[10px] text-muted">Filter JSON <span className="text-muted/50">(paste from Share button on main page, or leave {"{}"} for all games)</span></span>
+          <input
+            type="text" value={newFilterJson} onChange={(e) => setNewFilterJson(e.target.value)}
+            className="bg-background border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent"
+          />
+        </label>
+        <button
+          onClick={create} disabled={creating || !newName.trim()}
+          className="px-3 py-1.5 rounded text-xs bg-accent/20 border border-accent text-accent hover:bg-accent/30 disabled:opacity-50"
+        >{creating ? "Creating…" : "Create Link"}</button>
+      </div>
+
+      {/* Token list */}
+      {tokens.length > 0 && (
+        <div className="border border-border rounded overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-surface2 text-muted text-left">
+                <th className="px-3 py-2 font-medium">Name</th>
+                <th className="px-3 py-2 font-medium">Created</th>
+                <th className="px-3 py-2 font-medium">Expires</th>
+                <th className="px-3 py-2 font-medium">URL</th>
+                <th className="px-3 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokens.map((t, i) => (
+                <tr key={t.token} className={i % 2 === 0 ? "bg-background/50" : ""}>
+                  <td className="px-3 py-2 font-medium">{t.name}</td>
+                  <td className="px-3 py-2 text-muted">{t.created_at.slice(0, 10)}</td>
+                  <td className="px-3 py-2 text-muted">{t.expires_at || "Never"}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <a href={`/share/${t.token}`} target="_blank" rel="noreferrer"
+                        className="text-accent hover:underline font-mono">/share/{t.token}</a>
+                      <button onClick={() => copyUrl(t.token)}
+                        className="text-[10px] text-muted hover:text-accent">
+                        {copied === t.token ? "✓ Copied" : "📋 Copy"}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <button onClick={() => revoke(t.token)}
+                      className="text-[10px] text-danger hover:text-red-400">Revoke</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tokens.length === 0 && (
+        <p className="text-xs text-muted">No share links yet.</p>
+      )}
+    </div>
+  );
+}
+
+function FriendLibraries() {
+  const [friends, setFriends] = useState<{ steam_id: string; persona_name: string; fetched_at: string }[]>([]);
+  const [steamId, setSteamId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    fetch("/api/compare").then((response) => response.ok ? response.json() : []).then(setFriends).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const refresh = async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ steam_id: id }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Unable to fetch this Steam library.");
+      setSteamId("");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to fetch this Steam library.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Remove this cached friend library?")) return;
+    await fetch(`/api/compare?steam_id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    load();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <input value={steamId} onChange={(event) => setSteamId(event.target.value)} placeholder="17-digit Steam ID" inputMode="numeric"
+          className="flex-1 min-w-48 bg-background border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />
+        <button onClick={() => refresh(steamId.trim())} disabled={loading || !steamId.trim()}
+          className="px-3 py-1.5 rounded text-xs bg-accent/20 border border-accent text-accent hover:bg-accent/30 disabled:opacity-50">{loading ? "Fetching…" : "Add / Refresh"}</button>
+        <Link href="/compare" className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground">Open Comparison</Link>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {friends.length > 0 ? (
+        <div className="space-y-1">
+          {friends.map((friend) => <div key={friend.steam_id} className="flex items-center gap-2 text-xs bg-background/50 border border-border rounded px-2 py-1.5">
+            <span className="flex-1">{friend.persona_name}</span>
+            <span className="text-[10px] text-muted">Updated {friend.fetched_at}</span>
+            <button onClick={() => refresh(friend.steam_id)} disabled={loading} className="text-[10px] text-accent hover:underline">Refresh</button>
+            <button onClick={() => remove(friend.steam_id)} className="text-[10px] text-red-400 hover:underline">Remove</button>
+          </div>)}
+        </div>
+      ) : <p className="text-xs text-muted">No cached friend libraries.</p>}
     </div>
   );
 }

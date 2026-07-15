@@ -206,6 +206,21 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_games_name ON games(name);
     CREATE INDEX IF NOT EXISTS idx_game_tags_game ON game_tags(game_id);
     CREATE INDEX IF NOT EXISTS idx_game_tags_tag ON game_tags(tag_id);
+
+    CREATE TABLE IF NOT EXISTS share_tokens (
+      token      TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      filter_json TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      expires_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS friend_libraries (
+      steam_id    TEXT PRIMARY KEY,
+      persona_name TEXT NOT NULL,
+      games_json  TEXT NOT NULL,
+      fetched_at  TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add type column to subtags if missing

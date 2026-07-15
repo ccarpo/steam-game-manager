@@ -46,12 +46,13 @@ export async function GET() {
   const topGenres = db.prepare(`
     SELECT
       CASE
-        WHEN json_type(j.value) = 'object' THEN json_extract(j.value, '$.name')
+        WHEN substr(trim(j.value),1,1) = '{' THEN json_extract(j.value, '$.name')
         ELSE j.value
       END as name,
     COUNT(*) as count
     FROM games, json_each(games.steam_genres) j
     WHERE games.steam_genres IS NOT NULL AND games.steam_genres != '[]'
+      AND json_valid(games.steam_genres)
     GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
   `).all() as { name: string; count: number }[];
 
@@ -59,12 +60,13 @@ export async function GET() {
   const topCommunityTags = db.prepare(`
     SELECT
       CASE
-        WHEN json_type(j.value) = 'object' THEN json_extract(j.value, '$.name')
+        WHEN substr(trim(j.value),1,1) = '{' THEN json_extract(j.value, '$.name')
         ELSE j.value
       END as name,
       COUNT(*) as count
     FROM games, json_each(games.community_tags) j
     WHERE games.community_tags IS NOT NULL AND games.community_tags != '[]'
+      AND json_valid(games.community_tags)
     GROUP BY name HAVING name IS NOT NULL ORDER BY count DESC LIMIT 15
   `).all() as { name: string; count: number }[];
 
