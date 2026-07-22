@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install native build tools for better-sqlite3 and sharp
 RUN apk add --no-cache libc6-compat python3 make g++
@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # ── runner stage: minimal production image ────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 RUN apk add --no-cache libc6-compat
 
 WORKDIR /app

@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "./sqlite";
 import { extractYear } from "./release-tag";
 import { steamDbScore } from "./types";
 
@@ -15,7 +15,7 @@ const DEFAULT_BUCKETS = [
   { min: 0, label: "0-49%" },
 ];
 
-function getScoreBuckets(db: Database.Database): { min: number; label: string }[] {
+function getScoreBuckets(db: Database): { min: number; label: string }[] {
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'score_buckets'").get() as { value: string } | undefined;
     if (row) return JSON.parse(row.value);
@@ -23,7 +23,7 @@ function getScoreBuckets(db: Database.Database): { min: number; label: string }[
   return DEFAULT_BUCKETS;
 }
 
-function getScoreSource(db: Database.Database): "steam" | "steamdb" {
+function getScoreSource(db: Database): "steam" | "steamdb" {
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'score_source'").get() as { value: string } | undefined;
     if (row?.value === "steam") return "steam";
@@ -31,7 +31,7 @@ function getScoreSource(db: Database.Database): "steam" | "steamdb" {
   return "steamdb";
 }
 
-function getScoreBucket(pct: number, totalReviews: number, db: Database.Database): string {
+function getScoreBucket(pct: number, totalReviews: number, db: Database): string {
   const source = getScoreSource(db);
   const score = source === "steamdb" && totalReviews > 0
     ? steamDbScore(pct, totalReviews)
@@ -45,13 +45,13 @@ function getScoreBucket(pct: number, totalReviews: number, db: Database.Database
 }
 
 /** Ensure the "auto" L0 tag exists and return its id */
-function ensureAutoTag(db: Database.Database): number {
+function ensureAutoTag(db: Database): number {
   db.prepare("INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)").run(AUTO_TAG_NAME, AUTO_TAG_COLOR);
   return (db.prepare("SELECT id FROM tags WHERE name = ?").get(AUTO_TAG_NAME) as { id: number }).id;
 }
 
 /** Assign a game to an auto subtag. type = "release" | "sentiment" | "score" */
-function assignAutoSubtag(db: Database.Database, autoTagId: number, type: string, gameId: number, value: string) {
+function assignAutoSubtag(db: Database, autoTagId: number, type: string, gameId: number, value: string) {
   // Check if subtag exists; if it exists with a different type, that's a name collision — skip
   const existing = db.prepare("SELECT id, type FROM subtags WHERE tag_id = ? AND name = ?").get(autoTagId, value) as { id: number; type: string } | undefined;
   let subId: number;
@@ -78,7 +78,7 @@ function normalizeSentiment(s: string): string {
   return s;
 }
 
-export function assignAllAutoTags(db: Database.Database, gameId: number, opts: {
+export function assignAllAutoTags(db: Database, gameId: number, opts: {
   releaseDate?: string | null;
   sentiment?: string | null;
   positivePercent?: number;

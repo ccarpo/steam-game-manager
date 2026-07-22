@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "./sqlite";
 import path from "path";
 import fs from "fs";
 import { generateTxt, generateCsv } from "./export";
@@ -11,19 +11,19 @@ const DB_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "games.db");
 const BACKUP_DIR = path.join(DB_DIR, "backups");
 
-let db: Database.Database | null = null;
+let db: Database | null = null;
 
 // Snapshot at startup for diff on exit
 let startSnapshot: { gameCount: number; gameIds: Set<number>; tagCount: number; updated_at: string } | null = null;
 
-function takeSnapshot(d: Database.Database) {
+function takeSnapshot(d: Database) {
   const games = d.prepare("SELECT id FROM games").all() as { id: number }[];
   const tagCount = (d.prepare("SELECT COUNT(*) as c FROM game_tags").get() as { c: number }).c;
   const latest = (d.prepare("SELECT MAX(updated_at) as u FROM games").get() as { u: string | null })?.u || "";
   return { gameCount: games.length, gameIds: new Set(games.map(g => g.id)), tagCount, updated_at: latest };
 }
 
-function computeDelta(d: Database.Database): string[] {
+function computeDelta(d: Database): string[] {
   if (!startSnapshot) return [];
   const now = takeSnapshot(d);
   const lines: string[] = [];
@@ -105,7 +105,7 @@ export function reinitDb(): void {
   getDb();
 }
 
-export function getDb(): Database.Database {
+export function getDb(): Database {
   if (db) return db;
 
   if (!fs.existsSync(DB_DIR)) {
@@ -148,7 +148,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function initSchema(db: Database.Database) {
+function initSchema(db: Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tags (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -303,7 +303,7 @@ function initSchema(db: Database.Database) {
   migrateAutoTags(db);
 }
 
-function migrateDevPubToJson(db: Database.Database) {
+function migrateDevPubToJson(db: Database) {
   // Check if already migrated: if any developer field starts with "[", assume done
   const sample = db.prepare("SELECT developers FROM games WHERE developers != '' AND developers IS NOT NULL LIMIT 1").get() as { developers: string } | undefined;
   if (!sample || sample.developers.startsWith("[")) return;
@@ -339,7 +339,7 @@ function migrateDevPubToJson(db: Database.Database) {
 }
 
 /** Ensure "steam" L0 tag with subtags: wishlist, removed_from_wishlist, owned, ignored, played_elsewhere */
-export function ensureSteamTag(db: Database.Database): {
+export function ensureSteamTag(db: Database): {
   tagId: number;
   subtags: Record<string, number>;
 } {
@@ -356,7 +356,7 @@ export function ensureSteamTag(db: Database.Database): {
   return { tagId: tag.id, subtags };
 }
 
-function syncAssetCounts(db: Database.Database) {
+function syncAssetCounts(db: Database) {
   const ASSETS_DIR = path.join(process.cwd(), "data", "assets", "games");
   if (!fs.existsSync(ASSETS_DIR)) return;
 
@@ -385,7 +385,7 @@ function syncAssetCounts(db: Database.Database) {
 }
 
 /** Migrate old separate release/sentiment/score L0 tags into unified "auto" tag */
-function migrateAutoTags(db: Database.Database) {
+function migrateAutoTags(db: Database) {
   const oldNames = ["release", "sentiment", "score"];
   // Check if any old tags exist
   const oldTags = db.prepare(`SELECT id, name FROM tags WHERE name IN (${oldNames.map(() => "?").join(",")})`).all(...oldNames) as { id: number; name: string }[];
@@ -437,7 +437,7 @@ function migrateAutoTags(db: Database.Database) {
 }
 
 /** Read Steam API key and Steam ID from the settings table */
-export function getSteamCredentials(db: Database.Database): { steamId: string; apiKey: string } {
+export function getSteamCredentials(db: Database): { steamId: string; apiKey: string } {
   db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
   const get = (key: string) => {
     const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;

@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "./sqlite";
 
 /** Extract year from release_date string. Returns "TBA" for unknown. */
 export function extractYear(rd: string | null): string {
@@ -14,7 +14,7 @@ export function extractYear(rd: string | null): string {
 
 /** Auto-assign a single game to its release year subtag under the "release" tag.
  *  Creates the tag/subtag if needed. Safe to call repeatedly. */
-export function assignReleaseYearTag(db: Database.Database, gameId: number, releaseDate: string | null) {
+export function assignReleaseYearTag(db: Database, gameId: number, releaseDate: string | null) {
   const yr = extractYear(releaseDate);
   // Ensure "release" tag
   db.prepare("INSERT OR IGNORE INTO tags (name, color) VALUES ('release', '#f97316')").run();

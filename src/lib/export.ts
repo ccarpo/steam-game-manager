@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "./sqlite";
 
 // ── TXT export ──
 
@@ -14,7 +14,7 @@ function writeName(lines: string[], g: { name: string; steam_appid: number | nul
   if (g.notes?.trim()) lines.push(`${indent}\t--- note: ${g.notes.trim()}`);
 }
 
-export function generateTxt(db: Database.Database): string {
+export function generateTxt(db: Database): string {
   const rows = db.prepare(`
     SELECT g.id, g.name, g.steam_appid, g.notes, g.added_at,
            t.name as tag_name, s.name as subtag_name, s.type as subtag_type
@@ -132,7 +132,7 @@ function colVal(row: GameRow, col: string): string {
   }
 }
 
-export function generateCsv(db: Database.Database): string {
+export function generateCsv(db: Database): string {
   const settingRow = db.prepare("SELECT value FROM settings WHERE key = 'csv_export_columns'").get() as { value: string } | undefined;
   const mainCols = settingRow ? JSON.parse(settingRow.value) as string[] : DEFAULT_COLS;
 
