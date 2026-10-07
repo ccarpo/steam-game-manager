@@ -99,7 +99,8 @@ export default function TastePage() {
   if (loading && !profile) return <div className="flex items-center justify-center h-screen text-muted">Computing taste profile...</div>;
 
   const conf = profile ? CONFIDENCE_STYLE[profile.confidence] : null;
-  const needsEmbeddings = profile && !profile.coverage.hasTasteVector;
+  const needsEmbeddings = profile && profile.coverage.withVectors === 0;
+  const hasVectorsButNoSignal = profile && profile.coverage.withVectors > 0 && profile.signalCount === 0;
 
   return (
     <div className="fixed inset-0 overflow-y-auto bg-background text-foreground">
@@ -137,6 +138,13 @@ export default function TastePage() {
                 No embedding vectors yet, so similarity is unavailable — tag affinities and bounce detection still work.
                 Configure a provider in <Link href="/settings?tab=ai" className="text-accent hover:underline">Settings › AI</Link>,
                 then run <span className="font-mono">Sync embeddings</span>.
+              </div>
+            )}
+
+            {hasVectorsButNoSignal && (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
+                Embeddings are present, but there is no playtime/completion signal yet — the taste vector is empty.
+                Run <Link href="/settings?tab=steam" className="text-accent hover:underline">Settings › Steam &amp; Sync › 🎮 Sync Owned</Link> to populate playtime.
               </div>
             )}
 

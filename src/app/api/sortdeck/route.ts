@@ -31,6 +31,7 @@ export interface DeckCard {
   releaseDate: string;
   developers: string[];
   headerUrl: string;
+  movie?: { name: string; videoUrl: string; thumbnailUrl: string };
 }
 
 function headerUrl(appid: number | null, external: string): string {
@@ -46,6 +47,22 @@ function parseDevs(json: string | null): string[] {
     if (Array.isArray(d)) return d.filter((x): x is string => typeof x === "string");
   } catch { /* comma-separated legacy values are not worth salvaging */ }
   return [];
+}
+
+function parseMovie(json: string | null): DeckCard["movie"] {
+  try {
+    const arr = JSON.parse(json || "[]");
+    if (!Array.isArray(arr) || arr.length === 0) return undefined;
+    const m = arr[0];
+    if (m.video_url) {
+      return {
+        name: m.name || "Trailer",
+        videoUrl: m.video_url,
+        thumbnailUrl: m.thumbnail_url || "",
+      };
+    }
+  } catch { /* ignore */ }
+  return undefined;
 }
 
 /**
@@ -105,6 +122,7 @@ export async function GET(req: NextRequest) {
         releaseDate: "",
         developers: parseDevs(r.developers),
         headerUrl: headerUrl(r.steam_appid, ""),
+        movie: parseMovie(r.movies ?? null),
       });
     }
   }
@@ -251,6 +269,7 @@ export async function GET(req: NextRequest) {
             releaseDate: "",
             developers: parseDevs(r.developers),
             headerUrl: headerUrl(r.steam_appid, ""),
+            movie: parseMovie(r.movies ?? null),
           });
         }
       }

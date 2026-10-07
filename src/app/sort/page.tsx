@@ -21,6 +21,7 @@ interface DeckCard {
   releaseDate: string;
   developers: string[];
   headerUrl: string;
+  movie?: { name: string; videoUrl: string; thumbnailUrl: string };
 }
 
 interface Bucket {
@@ -188,7 +189,7 @@ export default function SortPage() {
   // ---------------------------------------------------------------------------
   return (
     <div className="fixed inset-0 flex flex-col bg-background text-foreground">
-      <div className="max-w-4xl w-full mx-auto flex flex-col flex-1 min-h-0 p-4 gap-3">
+      <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 min-h-0 p-4 gap-3">
         <div className="flex items-center gap-4 shrink-0">
           <Link href="/" className="text-accent hover:underline text-sm">&larr; Back</Link>
           <h1 className="text-lg font-semibold">🃏 Sort Deck</h1>
@@ -229,16 +230,16 @@ export default function SortPage() {
             {done ? (
               <DoneScreen history={history} onRestart={() => setPhase("setup")} onMore={() => start(config)} />
             ) : !card ? null : (
-              <div className="flex-1 min-h-0 flex gap-4">
+              <div className="flex-1 min-h-0 flex gap-4 justify-center">
                 {/* Card */}
                 <div
                   draggable
                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", card.key); e.dataTransfer.effectAllowed = "move"; }}
                   onDragEnd={() => setDragOver(null)}
-                  className="flex-1 min-w-0 bg-surface border border-border rounded-lg overflow-hidden flex flex-col cursor-grab active:cursor-grabbing"
+                  className="w-full max-w-xl bg-surface border border-border rounded-lg overflow-hidden flex flex-col cursor-grab active:cursor-grabbing shrink-0"
                 >
                   <div className="relative shrink-0">
-                    <img src={card.headerUrl} alt="" className="w-full aspect-[460/215] object-cover bg-border/20"
+                    <img src={card.headerUrl} alt="" className="w-full h-48 object-cover bg-border/20"
                       onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
                     <div className="absolute top-2 left-2 flex gap-1.5">
                       {card.owned && <Badge color="#66c0f4">owned</Badge>}
@@ -250,10 +251,10 @@ export default function SortPage() {
                     </div>
                   </div>
 
-                  <div className="p-4 flex-1 min-h-0 overflow-y-auto">
+                  <div className="p-3 flex-1 min-h-0 overflow-y-auto">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <h2 className="text-lg font-semibold">{card.name}</h2>
-                      {card.releaseDate && <span className="text-[11px] text-muted">{card.releaseDate}</span>}
+                      <h2 className="text-base font-semibold">{card.name}</h2>
+                      {card.releaseDate && <span className="text-[10px] text-muted">{card.releaseDate}</span>}
                     </div>
                     <div className="text-[11px] text-muted mt-0.5 flex gap-3 flex-wrap">
                       {card.playtimeHours != null && card.playtimeHours > 0 && <span>▶ {fmtHours(card.playtimeHours)} played</span>}
@@ -268,14 +269,30 @@ export default function SortPage() {
                     </div>
 
                     <button onClick={() => setInfoOpen((o) => !o)}
-                      className="mt-3 text-xs text-accent hover:underline">
+                      className="mt-2 text-xs text-accent hover:underline">
                       {infoOpen ? "▾ less info" : "▸ more info (i)"}
                     </button>
                     {infoOpen && (
-                      <div className="mt-2 text-xs text-muted space-y-1.5">
+                      <div className="mt-2 text-xs text-muted space-y-2">
                         {card.description
-                          ? <p className="leading-relaxed">{card.description.slice(0, 600)}{card.description.length > 600 ? "…" : ""}</p>
+                          ? <p className="leading-relaxed">{card.description.slice(0, 500)}{card.description.length > 500 ? "…" : ""}</p>
                           : <p className="italic">No description stored for this game.</p>}
+                        {card.movie && (
+                          <div>
+                            <div className="text-[10px] text-muted mb-1">▶ {card.movie.name}</div>
+                            <video
+                              controls
+                              playsInline
+                              preload="metadata"
+                              poster={card.movie.thumbnailUrl || undefined}
+                              className="w-full rounded border border-border bg-black"
+                              src={card.movie.videoUrl}
+                            >
+                              <a className="text-accent hover:underline" target="_blank" rel="noreferrer"
+                                href={card.movie.videoUrl}>Open trailer ↗</a>
+                            </video>
+                          </div>
+                        )}
                         {card.appid && (
                           <p><a className="text-accent hover:underline" target="_blank" rel="noreferrer"
                             href={`https://store.steampowered.com/app/${card.appid}`}>Steam store page ↗</a></p>
@@ -286,7 +303,7 @@ export default function SortPage() {
                 </div>
 
                 {/* Buckets */}
-                <div className="w-56 shrink-0 flex flex-col gap-2">
+                <div className="w-48 shrink-0 flex flex-col gap-2">
                   {config.buckets.map((b) => (
                     <button
                       key={b.hotkey + b.subtag}
@@ -294,7 +311,7 @@ export default function SortPage() {
                       onDragOver={(e) => { e.preventDefault(); setDragOver(b.subtag); }}
                       onDragLeave={() => setDragOver((d) => (d === b.subtag ? null : d))}
                       onDrop={(e) => { e.preventDefault(); setDragOver(null); decide(b); }}
-                      className={`flex-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                      className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
                         dragOver === b.subtag ? "border-accent bg-accent/15" : "border-border bg-surface hover:border-accent/60"
                       }`}
                     >

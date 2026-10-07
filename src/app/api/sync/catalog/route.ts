@@ -36,7 +36,10 @@ export async function POST(req: Request) {
   const dbPath = process.env.GM_DATA_DIR
     ? path.join(process.env.GM_DATA_DIR, "games.db")
     : path.join(process.cwd(), "data", "games.db");
-  const catalogPath = path.join(process.cwd(), "data", "catalog", "games.json");
+  const catalogPath = process.env.GM_CATALOG_PATH
+    || (process.env.GM_DATA_DIR
+      ? path.join(process.env.GM_DATA_DIR, "catalog", "games.json")
+      : path.join(process.cwd(), "data", "catalog", "games.json"));
 
   const stream = new ReadableStream({
     async start(controller) {

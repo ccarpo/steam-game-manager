@@ -19,7 +19,8 @@ RUN npm run build
 
 # ── runner stage: minimal production image ────────────────────────────────────
 FROM node:24-alpine AS runner
-RUN apk add --no-cache libc6-compat
+# python3 is required at runtime by the catalog ingestion API route.
+RUN apk add --no-cache libc6-compat python3
 
 WORKDIR /app
 

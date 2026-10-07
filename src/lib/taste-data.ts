@@ -23,6 +23,7 @@ export interface LibraryRow {
   positive_percent: number;
   total_reviews: number;
   developers: string | null;
+  movies: string | null;
   category: Category | null;
   ach_total: number | null;
   ach_achieved: number | null;
@@ -33,7 +34,7 @@ export interface LibraryRow {
 const LIBRARY_SELECT = `
   SELECT DISTINCT g.id, g.name, g.steam_appid, g.playtime_forever, g.playtime_2weeks,
          g.rtime_last_played, g.community_tags, g.steam_genres, g.positive_percent,
-         g.total_reviews, g.developers,
+         g.total_reviews, g.developers, g.movies,
          COALESCE(c.override_category, c.category) AS category,
          a.total AS ach_total, a.achieved AS ach_achieved, a.status AS ach_status,
          h.main_hours AS hltb_main
@@ -165,7 +166,7 @@ export function fetchDeckGames(db: Database, excludeIds: number[]): LibraryRow[]
   const rows = db.prepare(`
     SELECT DISTINCT g.id, g.name, g.steam_appid, g.playtime_forever, g.playtime_2weeks,
            g.rtime_last_played, g.community_tags, g.steam_genres, g.positive_percent,
-           g.total_reviews, g.developers,
+           g.total_reviews, g.developers, g.movies,
            COALESCE(c.override_category, c.category) AS category,
            a.total AS ach_total, a.achieved AS ach_achieved, a.status AS ach_status,
            h.main_hours AS hltb_main

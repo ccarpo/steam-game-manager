@@ -159,9 +159,14 @@ Works **fully offline with no AI** for the deterministic half, and gets similari
 
 ### Catalog Setup
 
-1. Place FronkonGames/Steam's `games.json` at `data/catalog/games.json`.
-2. In **Settings › 📦 Steam Catalog** click **Import & embed catalog**. It filters out owned/wishlisted games, keeps entries with tags and ≥100 reviews (≈20k games), and embeds them in batches.
-3. Switch to **🧭 Taste Profile › Discover** once embedded.
+1. Place FronkonGames/Steam's `games.json` in your data directory under `catalog/games.json`.
+   - For the Docker setup (`compose.yaml` mounts `/media/veracrypt3/steamgamemanager:/app/data`), copy it to `/media/veracrypt3/steamgamemanager/catalog/games.json`.
+   - For local dev, use `data/catalog/games.json`.
+2. Make sure the container was rebuilt after the `Dockerfile` change that installs `python3` in the runner stage.
+3. In **Settings › 📦 Steam Catalog** click **Import & embed catalog**. It filters out owned/wishlisted games, keeps entries with tags and ≥100 reviews (≈20k games), and embeds them in batches.
+4. Switch to **🧭 Taste Profile › Discover** once embedded.
+
+If you want the catalog file elsewhere, set the `GM_CATALOG_PATH` environment variable (e.g. in `compose.yaml`) to the absolute path inside the container.
 
 ### Data Safety & Recovery
 

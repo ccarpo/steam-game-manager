@@ -421,9 +421,19 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
               <SyncBtn label="Community" color="green" running={syncRunning} id="meta-miss-ct" onClick={() => runSync("/api/sync/metadata?source=community&mode=missing", "meta-miss-ct")} />
             </div>
             {(metaStatus?.failedAppDetails ?? 0) > 0 && (
-              <div className="flex items-center gap-2 mb-3 rounded border border-yellow-500/30 bg-yellow-500/5 px-2.5 py-2">
+              <div className="flex flex-wrap items-center gap-2 mb-3 rounded border border-yellow-500/30 bg-yellow-500/5 px-2.5 py-2">
                 <span className="text-[10px] text-yellow-300">{metaStatus!.failedAppDetails} App Details response{metaStatus!.failedAppDetails === 1 ? "" : "s"} returned <code>{"{\"success\":false}"}</code>.</span>
                 <SyncBtn label="↻ Retry failed" color="yellow" running={syncRunning} id="meta-retry-failed" onClick={() => runSync("/api/sync/metadata?source=appdetails&mode=failed", "meta-retry-failed")} />
+                <button onClick={async () => {
+                  try {
+                    const res = await fetch("/api/sync/metadata/failed?format=steamdb");
+                    const text = await res.text();
+                    await navigator.clipboard.writeText(text);
+                    alert(`${metaStatus!.failedAppDetails} SteamDB links copied to clipboard.`);
+                  } catch { alert("Failed to copy"); }
+                }} className="px-2 py-1 rounded border border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10 text-[10px]">
+                  📋 Copy SteamDB links
+                </button>
               </div>
             )}
             {/* Re-fetch all per source with session info */}
@@ -1399,6 +1409,7 @@ function AiSettings({ settings, onUpdate, appendLog, runSync, syncRunning }: {
           Import the optional <code className="bg-background px-1 rounded">data/catalog/games.json</code> dataset
           and build embeddings for unowned games. This powers the <strong>Discover feed</strong> and
           vector-based <strong>More like this</strong> recommendations.
+          In Docker place it at <code className="bg-background px-1 rounded">/app/data/catalog/games.json</code> inside the mounted data volume.
         </p>
         <CatalogSyncPanel runSync={runSync} syncRunning={syncRunning} />
       </div>

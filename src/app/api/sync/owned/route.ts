@@ -1,6 +1,27 @@
 import { getDb, ensureSteamTag, getSteamCredentials } from "@/lib/db";
 import { classifyGames } from "@/lib/classify";
 
+async function fetchJsonWithRetry(url: string, retries = 3): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+      const text = await res.text();
+      let data: unknown = undefined;
+      if (text.trim()) {
+        try { data = JSON.parse(text); } catch { /* not JSON */ }
+      }
+      if (!res.ok) return { ok: false, status: res.status, error: `HTTP ${res.status}` };
+      return { ok: true, status: res.status, data };
+    } catch (e) {
+      if (i === retries - 1) return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
+      await new Promise((r) => setTimeout(r, (i + 1) * 1000));
+    }
+  }
+  return { ok: false, status: 0, error: "retry exhausted" };
+}
+
 export const dynamic = "force-dynamic";
 
 export async function POST() {
@@ -18,16 +39,16 @@ export async function POST() {
 
         send({ type: "status", message: "Fetching owned games from Steam..." });
 
-        const res = await fetch(
+        const ownedRes = await fetchJsonWithRetry(
           `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${apiKey}&steamid=${steamId}&include_appinfo=1&include_played_free_games=1&format=json`
         );
-        if (!res.ok) {
-          send({ type: "error", message: `Steam API error: ${res.status}` });
+        if (!ownedRes.ok) {
+          send({ type: "error", message: `Steam API error: ${ownedRes.status} ${ownedRes.error || ""}` });
           controller.close();
           return;
         }
 
-        const data = await res.json() as {
+        const data = (ownedRes.data || {}) as {
           response?: {
             game_count?: number;
             games?: { appid: number; name: string; playtime_forever?: number; playtime_2weeks?: number; rtime_last_played?: number }[];
@@ -46,23 +67,35 @@ export async function POST() {
         const { tagId, subtags } = ensureSteamTag(db);
         const ownedSubId = subtags.owned;
 
-        // Fetch wishlist data to get wishlist_date for owned games
+        // Fetch wishlist data to get wishlist_date for owned games.
+        // This endpoint can return a malformed stream, so we retry and fall back
+        // to continuing without dates rather than aborting the owned sync.
         send({ type: "status", message: "Fetching wishlist for date matching..." });
         const wishlistDates = new Map<number, string>();
+        let wishlistError = "";
         try {
-          const wlRes = await fetch(
+          const wlRes = await fetchJsonWithRetry(
             `https://api.steampowered.com/IWishlistService/GetWishlist/v1/?steamid=${steamId}&key=${apiKey}`
           );
           if (wlRes.ok) {
-            const wlData = await wlRes.json() as { response?: { items?: { appid: number; date_added: number }[] } };
+            const wlData = (wlRes.data || {}) as { response?: { items?: { appid: number; date_added: number }[] } };
             for (const item of wlData?.response?.items || []) {
               if (item.date_added) {
                 wishlistDates.set(item.appid, new Date(item.date_added * 1000).toISOString().split("T")[0]);
               }
             }
+          } else {
+            wishlistError = wlRes.error || `HTTP ${wlRes.status}`;
           }
-        } catch { /* continue without */ }
-        send({ type: "status", message: `Wishlist dates: ${wishlistDates.size} entries` });
+        } catch (e) {
+          wishlistError = e instanceof Error ? e.message : String(e);
+        }
+        send({
+          type: "status",
+          message: wishlistError
+            ? `Wishlist date fetch failed (${wishlistError}); continuing without dates.`
+            : `Wishlist dates: ${wishlistDates.size} entries`,
+        });
 
         const findGame = db.prepare("SELECT id FROM games WHERE steam_appid = ?");
         const insGame = db.prepare("INSERT INTO games (name, steam_appid, wishlist_date, added_at, playtime_forever, playtime_2weeks, rtime_last_played) VALUES (?, ?, ?, ?, ?, ?, ?)");
