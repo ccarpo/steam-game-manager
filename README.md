@@ -151,6 +151,7 @@ Works **fully offline with no AI** for the deterministic half, and gets similari
 - **Wishlist scoring** — Your Steam wishlist ranked by how likely you are to actually play each game, with a plain-language reason ("Because you played Deep Rock Galactic and Hunt: Showdown 1896 · Co-op"). Needs embeddings.
 - **Discover feed** — Ranks unowned Steam catalog games against your taste vector. Go to **🧭 Taste Profile** and switch to the **Discover** tab. Needs embeddings + the optional `data/catalog/games.json` dataset.
 - **More like this** — On any game's Inspector the *Similar* list now uses vector similarity across the catalog, with an **unexpected** badge when the match crosses genres.
+- **"What should I play next?" chat** at `/chat` (💬 in the top bar) — a conversation that knows your taste signature, defining games, bounce clusters, what you played recently, what's in progress, your top unstarted picks and their time-to-beat, and your ranked wishlist. The system prompt is rebuilt from live data on every message, so it always answers against the current library. Needs a chat model (see below); works with any OpenAI-compatible endpoint.
 
 **Anti-cluster tuning (deviation from Gamekeeper):** the original rule flags a tag when `bounced / (bounced + engaged) ≥ 0.6`. That assumes a small, mostly-played library; on a large backlog almost every tag with 2+ bounces reaches that ratio, which produced meaningless clusters (a single 147-game "Indie" blob). Three extra guards — maximum prevalence, minimum bounce *lift* over the library's own baseline, and a merge cap — are applied only to libraries above 50 launched games, so small-library behaviour is unchanged.
 
@@ -193,6 +194,7 @@ Finally, run **Settings › 🧬 Embeddings → Build embeddings**. One vector p
 - **Credentials in the base URL** (`https://user:pass@host`) are supported for reverse-proxied instances. Node's `fetch` rejects such URLs outright, so they are split out into an HTTP Basic `Authorization` header; an explicit API key takes precedence. Beware that an `http://` → `https://` redirect drops the header (the origin changes) — point the base URL at the final scheme directly. `/api/ai/health` masks the credentials in its response.
 - **Secrets are stored in plaintext** in the `settings` table and are returned by `GET /api/settings`, exactly like `steam_api_key`. This app is built to run on a trusted local network — do not expose it to the internet.
 - Nomic's task prefixes (`search_document:` etc.) are intentionally **not** used: measured against tag-overlap ground truth on a real library they did not improve ranking correlation (0.577 raw vs 0.576 `clustering:` vs 0.505 `search_document:`) and narrowed the score spread.
+- **Reasoning models and token budgets** — qwen3 spends completion tokens on hidden reasoning before answering; the chat endpoint requests 4000 `max_tokens` because smaller budgets starve replies to empty or truncate them mid-sentence.
 
 ## Tech Stack
 
