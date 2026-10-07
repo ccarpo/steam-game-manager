@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { GameWithTags, steamDbScore, TintColors, getScoreTint, getPrimaryScore, scoreColor } from "@/lib/types";
+import { CATEGORY_COLOR, CATEGORY_LABEL, Category } from "@/lib/classifier";
 import { safeJsonParse, assetId } from "@/lib/utils";
 
 function getScreenshots(game: GameWithTags): string[] {
@@ -31,9 +32,10 @@ interface Props {
   scoreSource?: "steam" | "steamdb";
   tintColors?: TintColors | null;
   recScore?: number | null;
+  showStatusDot?: boolean;
 }
 
-export default function GameCard({ game, selected, slideshow, slideDelay = 1000, pageFocused = true, defaultImage = "header", genresCount = 3, communityTagsCount = 4, onClick, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onCommunityTagFilter, colorCoded, scoreSource = "steamdb", tintColors, recScore }: Props) {
+export default function GameCard({ game, selected, slideshow, slideDelay = 1000, pageFocused = true, defaultImage = "header", genresCount = 3, communityTagsCount = 4, onClick, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onCommunityTagFilter, colorCoded, scoreSource = "steamdb", tintColors, recScore, showStatusDot = true }: Props) {
   const [imgState, setImgState] = useState<"loading" | "loaded" | "error">("loading");
   const [hovered, setHovered] = useState(false);
   const [ssIdx, setSsIdx] = useState(-1);
@@ -159,16 +161,26 @@ export default function GameCard({ game, selected, slideshow, slideDelay = 1000,
             No image
           </div>
         )}
-        {/* Review badge */}
-        {primaryScore > 0 && (
-          <div
-            className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold"
-            style={{
-              backgroundColor: "rgba(0,0,0,0.75)",
-              color: scoreColor(primaryScore, tintColors || null),
-            }}
-          >
-            {primaryScore}{scoreSource === "steam" ? "%" : ""}
+        {/* Review + HLTB badges */}
+        {(primaryScore > 0 || (game.hltb?.match_status === "matched" && game.hltb.main_hours != null)) && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
+            {game.hltb?.match_status === "matched" && game.hltb.main_hours != null && (
+              <div className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/75 text-sky-300"
+                title={game.hltb.hltb_name ? `HLTB: ${game.hltb.hltb_name}` : "HowLongToBeat main story"}>
+                ~{game.hltb.main_hours}h
+              </div>
+            )}
+            {primaryScore > 0 && (
+              <div
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.75)",
+                  color: scoreColor(primaryScore, tintColors || null),
+                }}
+              >
+                {primaryScore}{scoreSource === "steam" ? "%" : ""}
+              </div>
+            )}
           </div>
         )}
         {game.queue_position != null && (
@@ -181,6 +193,11 @@ export default function GameCard({ game, selected, slideshow, slideDelay = 1000,
             🎯{Math.round(recScore * 100)}
           </div>
         )}
+        {showStatusDot && game.classification && (() => {
+          const eff = (game.classification.override_category ?? game.classification.category) as Category;
+          return <span className="absolute bottom-1.5 left-1.5 w-2 h-2 rounded-full ring-1 ring-black/50"
+            style={{ backgroundColor: CATEGORY_COLOR[eff] }} title={CATEGORY_LABEL[eff]} />;
+        })()}
         {game.steam_appid && hovered && (
           <a
             href={`steam://run/${game.steam_appid}`}

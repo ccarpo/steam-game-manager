@@ -35,6 +35,8 @@ export interface Filters {
   reviewsMax?: number;
   minCommunityTags?: number;
   minGenres?: number;
+  hltbMaxHours?: number;
+  hltbIncludeUnknown?: boolean;
 }
 
 // --- Dynamic counts ---
@@ -171,6 +173,13 @@ export function filterGames(allGames: GameWithTags[], filters: Filters): GameWit
 
     if (filters.minGenres !== undefined) {
       if (genres.length < filters.minGenres) return false;
+    }
+
+    if (filters.hltbMaxHours !== undefined) {
+      const mh = game.hltb?.main_hours;
+      if (mh == null || mh > filters.hltbMaxHours) {
+        if (!(filters.hltbIncludeUnknown && mh == null)) return false;
+      }
     }
 
     if (hideWishlistOnly && gameTags.length > 0 && gameTags.every((t) => t.tag_name === "steam")) return false;
@@ -331,6 +340,23 @@ function compareBySortKey(a: GameWithTags, b: GameWithTags, sort: string, d: num
       const av = a.queue_position, bv = b.queue_position;
       if (av == null && bv == null) return 0; if (av == null) return 1; if (bv == null) return -1;
       return d * (av - bv);
+    }
+    case "playtime": {
+      const av = a.playtime_forever || 0, bv = b.playtime_forever || 0;
+      if (!av && !bv) return 0; if (!av) return 1; if (!bv) return -1;
+      return d * (av - bv);
+    }
+    case "last_played": {
+      const av = a.rtime_last_played || 0, bv = b.rtime_last_played || 0;
+      if (!av && !bv) return 0; if (!av) return 1; if (!bv) return -1;
+      return d * (av - bv);
+    }
+    case "hltb": {
+      const av = a.hltb?.main_hours, bv = b.hltb?.main_hours;
+      if (av == null && bv == null) return a.name.localeCompare(b.name);
+      if (av == null) return 1; if (bv == null) return -1;
+      if (av !== bv) return d * (av - bv);
+      return a.name.localeCompare(b.name);
     }
     case "user_rating": {
       const av = a.user_rating, bv = b.user_rating;

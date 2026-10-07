@@ -45,6 +45,7 @@ export default function Home() {
   const [colorCoded, setColorCoded] = useState(false);
   const [scoreSource, setScoreSource] = useState<"steam" | "steamdb">("steamdb");
   const [tintColors, setTintColors] = useState<TintColors | null>(null);
+  const [showStatusDot, setShowStatusDot] = useState(true);
 
   // Keep inspectorGame / selectedGame in sync when games array refreshes
   // Only update if the game data actually changed (compare by relevant fields, not reference)
@@ -119,6 +120,7 @@ export default function Home() {
       if (s.card_genres_count) setGenresCount(Number(s.card_genres_count));
       if (s.card_community_tags_count) setCommunityTagsCount(Number(s.card_community_tags_count));
       if (s.score_source === "steam") setScoreSource("steam");
+      if (s.show_status_dot === "0") setShowStatusDot(false);
       if (s.color_coded === "1") {
         setColorCoded(true);
         const preset = s.color_preset || "subtle";
@@ -535,6 +537,7 @@ export default function Home() {
             metacritic_score: 0, screenshots: "[]", movies: "[]",
             total_screenshots: 0, total_movies: 0,
             steam_image_url: null, wishlist_date: null,
+            playtime_forever: 0, playtime_2weeks: 0, rtime_last_played: 0, app_type: "",
             added_at: new Date().toISOString().split("T")[0],
             queue_position: null,
             user_rating: null,
@@ -616,6 +619,9 @@ export default function Home() {
             <option value="release_date">Release</option>
             <option value="wishlist_date">Wishlist Date</option>
             <option value="added_at">Added</option>
+            <option value="playtime">⏱ Playtime</option>
+            <option value="last_played">Last Played</option>
+            <option value="hltb">⏳ HLTB</option>
             <option value="recommendation">🎯 Recommendation</option>
             <option value="curation">📋 Curation</option>
             <option value="user_rating">⭐ My Rating</option>
@@ -691,6 +697,7 @@ export default function Home() {
             title="Share current collection"
           >🔗</button>
           <a href="/compare" className="px-2 py-1 text-xs rounded border bg-background border-border text-muted hover:text-foreground" title="Compare friend libraries">Compare</a>
+          <a href="/taste" className="text-xs text-muted hover:text-foreground" title="Taste profile">🧭</a>
           <a href="/stats" className="text-xs text-muted hover:text-foreground" title="Stats">📊</a>
           <a href="/settings" className="text-xs text-muted hover:text-foreground">⚙️</a>
         </div>
@@ -717,6 +724,7 @@ export default function Home() {
                       defaultImage={defaultImage} genresCount={genresCount} communityTagsCount={communityTagsCount}
                       colorCoded={colorCoded} scoreSource={scoreSource} tintColors={tintColors}
                       recScore={playNextScores.get(game.id)?.score ?? null}
+                      showStatusDot={showStatusDot}
                       onTagInclude={toggleIncTag} onTagExclude={toggleExcTag}
                       onSubtagInclude={toggleIncSub} onSubtagExclude={toggleExcSub}
                       onGenreFilter={onGenreFilter}

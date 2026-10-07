@@ -73,6 +73,9 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "appid", label: "AppID", defaultWidth: 75, minWidth: 50, sortable: true, getValue: (g) => g.steam_appid || 0 },
   { key: "curation", label: "Curation", defaultWidth: 65, minWidth: 40, sortable: true, getValue: (g) => g.queue_position ?? 99999 },
   { key: "userRating", label: "⭐ Rating", defaultWidth: 60, minWidth: 40, sortable: true, getValue: (g) => g.user_rating ?? 0 },
+  { key: "playtime", label: "⏱ Playtime", defaultWidth: 80, minWidth: 50, sortable: true, getValue: (g) => g.playtime_forever || 0 },
+  { key: "last_played", label: "Last Played", defaultWidth: 90, minWidth: 60, sortable: true, getValue: (g) => g.rtime_last_played || 0 },
+  { key: "hltb", label: "⏳ HLTB", defaultWidth: 60, minWidth: 40, sortable: true, getValue: (g) => g.hltb?.main_hours ?? -1 },
   { key: "recScore", label: "🎯 Rec", defaultWidth: 55, minWidth: 40, sortable: true },
   { key: "notes", label: "Notes", defaultWidth: 150, minWidth: 60 },
   { key: "actions", label: "", defaultWidth: 70, minWidth: 50 },
@@ -257,6 +260,18 @@ function CellContent({ col, game, imgH, ssCount, slideshow, slideDelay, pageFocu
       return game.queue_position != null ? <span className="text-purple-400 font-bold text-xs">#{game.queue_position}</span> : <span className="text-muted/30">—</span>;
     case "userRating":
       return game.user_rating != null ? <span className="text-amber-400 font-bold text-xs">⭐{game.user_rating}</span> : <span className="text-muted/30">—</span>;
+    case "playtime":
+      return game.playtime_forever > 0
+        ? <span className="text-[10px] text-muted">{(game.playtime_forever / 60).toFixed(1)}h</span>
+        : <span className="text-[10px] text-muted">—</span>;
+    case "last_played":
+      return game.rtime_last_played > 0
+        ? <span className="text-[10px] text-muted">{new Date(game.rtime_last_played * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+        : <span className="text-[10px] text-muted">—</span>;
+    case "hltb":
+      return game.hltb?.match_status === "matched" && game.hltb.main_hours != null
+        ? <span className="text-[10px] text-sky-300" title={game.hltb.hltb_name || "HowLongToBeat"}>{game.hltb.main_hours.toFixed(1)}h</span>
+        : <span className="text-[10px] text-muted">—</span>;
     case "recScore": {
       const rec = recScores?.get(game.id);
       if (!rec) return <span className="text-muted/30">—</span>;

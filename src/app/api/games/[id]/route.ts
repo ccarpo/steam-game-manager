@@ -19,7 +19,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     )
     .all(id);
 
-  return NextResponse.json({ ...(game as object), tags });
+  const classification = db.prepare("SELECT category, reason, confidence, override_category FROM game_classification WHERE game_id = ?").get(id) || null;
+  const appid = (game as { steam_appid?: number | null }).steam_appid;
+  const hltb = appid != null
+    ? db.prepare("SELECT hltb_id, hltb_name, main_hours, extra_hours, completionist_hours, match_status FROM hltb WHERE appid = ?").get(appid) || null
+    : null;
+
+  return NextResponse.json({ ...(game as object), tags, classification, hltb });
 }
 
 // PUT /api/games/:id
@@ -110,7 +116,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   if (changes.length > 0) audit("UPDATE_GAME", `"${gameName}" [id=${id} appid=${appid}] ${changes.join(" | ")}`);
 
-  return NextResponse.json({ ...(game as object), tags: gameTags });
+  const classification = db.prepare("SELECT category, reason, confidence, override_category FROM game_classification WHERE game_id = ?").get(id) || null;
+  const appid2 = (game as { steam_appid?: number | null }).steam_appid;
+  const hltb = appid2 != null
+    ? db.prepare("SELECT hltb_id, hltb_name, main_hours, extra_hours, completionist_hours, match_status FROM hltb WHERE appid = ?").get(appid2) || null
+    : null;
+  return NextResponse.json({ ...(game as object), tags: gameTags, classification, hltb });
 }
 
 // DELETE /api/games/:id

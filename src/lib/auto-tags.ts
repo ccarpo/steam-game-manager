@@ -96,4 +96,4 @@ export function assignAllAutoTags(db: Database, gameId: number, opts: {
   }
 }
 
-export { AUTO_TAG_NAME, getScoreBucket, ensureAutoTag };
+export { AUTO_TAG_NAME, getScoreBucket, ensureAutoTag, assignAutoSubtag };

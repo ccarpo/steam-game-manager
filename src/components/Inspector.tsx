@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import { GameWithTags, Tag, Subtag, steamDbScore, TintColors, getScoreTint } from "@/lib/types";
+import { GameWithTags, Tag, Subtag, steamDbScore, TintColors, getScoreTint, GameClassification } from "@/lib/types";
+import { CATEGORY_COLOR, CATEGORY_LABEL, Category } from "@/lib/classifier";
 import { safeJsonParse, formatDate } from "@/lib/utils";
 import Lightbox, { MediaItem } from "./Lightbox";
 import TagTextInput from "./TagTextInput";
 
 interface LayoutData {
+  statusSlot?: React.ReactNode;
+  hltbSlot?: React.ReactNode;
   name: string;
   appid: number | null;
   headerImg: string | null;
@@ -19,6 +22,8 @@ interface LayoutData {
   releaseDate: string;
   wishlistDate?: string | null;
   addedAt?: string | null;
+  playtimeForever?: number;
+  rtimeLastPlayed?: number;
   userRating?: number | null;
   positivePercent: number;
   totalReviews: number;
@@ -389,6 +394,14 @@ const InspectorLayout = memo(function InspectorLayout({ data, onClose, tagsSlot,
                   <div className="flex flex-col items-center"><span className="text-muted">Publisher</span><span className="truncate max-w-full">{data.publishers || "\u2014"}</span></div>
                   <div className="flex flex-col items-center"><span className="text-muted">Developer</span><span className="truncate max-w-full">{data.developers || "\u2014"}</span></div>
                 </div>
+                <div className="grid grid-cols-4 gap-x-3">
+                  <div className="flex flex-col items-center"><span className="text-muted">Playtime</span>
+                    <span>{(data.playtimeForever || 0) > 0 ? `${(data.playtimeForever! / 60).toFixed(1)}h` : "—"}</span>
+                    {(data.rtimeLastPlayed || 0) > 0 && <span className="text-[8px] text-muted/60">last played {formatDate(new Date(data.rtimeLastPlayed! * 1000).toISOString().split("T")[0])}</span>}
+                  </div>
+                  {data.statusSlot}
+                  {data.hltbSlot}
+                </div>
                 <div className="grid grid-cols-3 gap-x-3">
                   <div className="flex flex-col items-center"><span className="text-muted">Release</span><span>{data.releaseDate || "\u2014"}</span></div>
                   <div className="flex flex-col items-center"><span className="text-muted">Added</span><span>{data.addedAt ? formatDate(data.addedAt) : "\u2014"}</span></div>
@@ -476,6 +489,132 @@ function InlineEdit({ label, value, type = "text", color = "text-foreground", pl
   );
 }
 
+/** Status cell: classification badge + override select */
+function StatusCell({ game, onChanged }: { game: GameWithTags; onChanged?: () => void }) {
+  const cls = game.classification as GameClassification | null | undefined;
+  const effective = cls ? (cls.override_category ?? cls.category) : null;
+  const [saving, setSaving] = useState(false);
+
+  const setOverride = async (v: string) => {
+    setSaving(true);
+    try {
+      await fetch(`/api/games/${game.id}/classification`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ override: v === "" ? null : v }),
+      });
+      onChanged?.();
+    } finally { setSaving(false); }
+  };
+
+  if (!cls) return <div className="flex flex-col items-center col-span-2"><span className="text-muted">Status</span><span>—</span></div>;
+
+  return (
+    <div className="flex flex-col items-center col-span-2">
+      <span className="text-muted">Status</span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+          style={{ backgroundColor: CATEGORY_COLOR[effective as Category] + "25", color: CATEGORY_COLOR[effective as Category] }}
+          title={`${cls.reason} (${cls.confidence})`}>
+          {CATEGORY_LABEL[effective as Category]}
+          {cls.override_category && " ✎"}
+        </span>
+        <select value={cls.override_category || ""} disabled={saving}
+          onChange={(e) => setOverride(e.target.value)}
+          className="bg-background border border-border rounded px-1 py-0 text-[9px] text-muted"
+          title={cls.override_category ? `Manual override — auto: ${CATEGORY_LABEL[cls.category]}` : "Auto-detected"}>
+          <option value="">Auto{cls.override_category ? "" : ` (${CATEGORY_LABEL[cls.category]})`}</option>
+          {(Object.keys(CATEGORY_LABEL) as Category[]).map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+        </select>
+      </span>
+      <span className="text-[8px] text-muted/60 truncate max-w-full" title={cls.reason}>
+        {cls.override_category ? `manual · auto: ${CATEGORY_LABEL[cls.category]}` : `${cls.reason} · ${cls.confidence.toLowerCase()}`}
+      </span>
+    </div>
+  );
+}
+
+interface HltbSearchItem { hltb_id: number; hltb_name: string; main_hours: number | null; extra_hours: number | null; completionist_hours: number | null }
+
+/** Time-to-beat cell: hours summary + fix-match inline search */
+function HltbCell({ game, onChanged }: { game: GameWithTags; onChanged?: () => void }) {
+  const h = game.hltb;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(game.name);
+  const [results, setResults] = useState<HltbSearchItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const doSearch = async () => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`/api/hltb/search?q=${encodeURIComponent(query)}`);
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || "Search failed"); setResults([]); }
+      else setResults(d);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
+  const apply = async (item: HltbSearchItem | null) => {
+    setBusy(true);
+    try {
+      await fetch(`/api/games/${game.id}/hltb`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item ?? { hltb_id: null }),
+      });
+      setOpen(false);
+      onChanged?.();
+    } finally { setBusy(false); }
+  };
+
+  const fmt = (v: number | null | undefined) => v == null ? null : `${v}h`;
+  const parts = h?.match_status === "matched"
+    ? [h.main_hours != null && `Main ${fmt(h.main_hours)}`, h.extra_hours != null && `Extra ${fmt(h.extra_hours)}`, h.completionist_hours != null && `100% ${fmt(h.completionist_hours)}`].filter(Boolean)
+    : [];
+
+  return (
+    <div className="flex flex-col items-center relative">
+      <span className="text-muted">Time to beat</span>
+      <span className="truncate max-w-full" title={h?.hltb_name || undefined}>
+        {h == null ? "—" : h.match_status === "no_match" ? "not found" : (parts.join(" · ") || "—")}
+      </span>
+      <span className="text-[8px] text-muted/60 flex items-center gap-1">
+        <a href={h?.hltb_id ? `https://howlongtobeat.com/game/${h.hltb_id}` : "https://howlongtobeat.com"}
+          target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">HowLongToBeat</a>
+        {game.steam_appid != null && (
+          <button onClick={() => { setOpen(!open); if (!open) setQuery(game.name); }}
+            className="hover:text-accent underline" title="Fix match">{open ? "close" : "fix"}</button>
+        )}
+      </span>
+      {open && (
+        <div className="absolute top-full mt-1 z-20 w-64 bg-surface border border-border rounded shadow-lg p-1.5 text-left">
+          <div className="flex gap-1">
+            <input value={query} onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+              className="flex-1 min-w-0 bg-background border border-border rounded px-1.5 py-0.5 text-[10px]" />
+            <button onClick={doSearch} disabled={busy}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-50">{busy ? "…" : "Go"}</button>
+          </div>
+          {err && <div className="text-[9px] text-danger mt-1">{err}</div>}
+          <div className="mt-1 max-h-40 overflow-y-auto">
+            {results.map((r) => (
+              <button key={r.hltb_id} onClick={() => apply(r)} disabled={busy}
+                className="w-full text-left px-1.5 py-1 rounded hover:bg-surface2/60 text-[10px]">
+                <div className="truncate">{r.hltb_name}</div>
+                <div className="text-[9px] text-muted">{[fmt(r.main_hours), fmt(r.extra_hours), fmt(r.completionist_hours)].filter(Boolean).join(" / ") || "no times"}</div>
+              </button>
+            ))}
+          </div>
+          {h?.match_status === "matched" && (
+            <button onClick={() => apply(null)} disabled={busy}
+              className="w-full text-left px-1.5 py-1 mt-0.5 rounded hover:bg-danger/10 text-[10px] text-danger">✕ Clear match</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Main Inspector for DB games
 export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpdate, onTagInclude, onTagExclude, onSubtagInclude, onSubtagExclude, onGenreFilter, onFeatureFilter, onCommunityTagFilter, onSimilarClick, colorCoded, scoreSource, tintColors, recScore }: InspectorProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -540,6 +679,9 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     developers: game.developers?.startsWith("[") ? JSON.parse(game.developers).join(", ") : (game.developers || ""),
     publishers: game.publishers?.startsWith("[") ? JSON.parse(game.publishers).join(", ") : (game.publishers || ""),
     releaseDate: game.release_date, wishlistDate: game.wishlist_date, addedAt: game.added_at,
+    playtimeForever: game.playtime_forever, rtimeLastPlayed: game.rtime_last_played,
+    statusSlot: <StatusCell game={game} onChanged={() => onUpdate?.(game.id, {})} />,
+    hltbSlot: <HltbCell game={game} onChanged={() => onUpdate?.(game.id, {})} />,
     userRating: game.user_rating,
     queuePosition: game.queue_position,
     recScore: recScore || null,
@@ -548,10 +690,11 @@ export default function Inspector({ game, onClose, onEdit, onDelete, tags, onUpd
     screenshots, fullScreenshots, movies,
     totalScreenshots: game.total_screenshots || 0, totalMovies: game.total_movies || 0, notes: game.notes,
     refreshKey,
-  }), [game.id, game.name, game.steam_appid, game.description, genres, features, communityTags, // eslint-disable-line react-hooks/exhaustive-deps
+  }), [game, game.id, game.name, game.steam_appid, game.description, genres, features, communityTags, // eslint-disable-line react-hooks/exhaustive-deps
     game.developers, game.publishers, game.release_date, game.wishlist_date, game.added_at,
     game.positive_percent, game.total_reviews, game.metacritic_score, game.review_sentiment,
-    screenshots, fullScreenshots, movies, game.total_screenshots, game.total_movies, game.notes, aid, refreshKey, game.updated_at, recScore]);
+    game.playtime_forever, game.rtime_last_played, game.classification, game.hltb,
+    screenshots, fullScreenshots, movies, game.total_screenshots, game.total_movies, game.notes, aid, refreshKey, game.updated_at, recScore, onUpdate]);
 
   const tagsSlot = useMemo(() => <TagDisplay game={game} tags={tags} onTagInclude={onTagInclude} onTagExclude={onTagExclude}
     onSubtagInclude={onSubtagInclude} onSubtagExclude={onSubtagExclude} onUpdate={onUpdate} />,

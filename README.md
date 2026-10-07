@@ -125,6 +125,41 @@ Then use the sync buttons to pull your library.
 - **Score buckets** — Auto-assigns configurable score ranges.
 - **One-click regenerate** — "🏷️ Auto Tags" button in Settings.
 
+### Organize — Automatic Classification
+
+- **14 priority rules** — Every owned game is sorted into **Completed**, **In Progress**, **Endless** or **Not a Game** from playtime, achievement progress, last-played date and app type. The rules are deterministic and ordered, so the same library always produces the same result — no AI involved.
+- **Manual overrides always win** — Set a status by hand in the Inspector and no re-classification will ever touch it.
+- **Results persist** — Stored in `game_classification` with the reason, confidence and the `rules_version` they were produced under. "Classify new" only looks at games that have no current-version result; "Re-classify all" redoes everything.
+- **Mirrored into tags** — The automatic category is also written to an `auto > status` subtag, so the sidebar, filter chips and CSV export all work with it unchanged.
+
+> Gamekeeper's Steam Cloud collection write-back is deliberately **not** implemented: it needs direct access to Steam's local `userdata` directory with Steam closed, which a containerised deployment cannot do safely.
+
+### HowLongToBeat Completion Times
+
+- **Automatic fetching** — "⏳ Fetch completion times" in Settings matches your games against HowLongToBeat and caches the result in the `hltb` table. Owned In-Progress games are fetched first, then Endless, then the rest.
+- **Matching** — Titles are normalised (trademark symbols, edition suffixes like "Game of the Year Edition") and accepted only above a 0.7 Levenshtein similarity, so wrong matches are rare. When one slips through, use **fix** in the Inspector to search and pick the right entry by hand.
+- **Short games filter** — A log-scale "⏳ Beat" slider (~0.5–100 h) in the sidebar, with an "include unknown length" toggle, plus a `~12h` badge on cards, an `⏳ HLTB` table column and an `hltb` sort key.
+
+> HowLongToBeat has no public API. This uses their internal search endpoint with a token/honeypot handshake and polite 333 ms pacing; **it can break at any time** if they change it. Data belongs to HowLongToBeat.
+
+### Discover — Taste Engine
+
+Works **fully offline with no AI** for the deterministic half, and gets similarity ranking once embeddings exist.
+
+- **Taste profile** at `/taste` — Your tag signature, "defining games" (anchors) weighted by playtime, recency, completion and current activity, and a confidence level derived from how many real signals your library provides.
+- **Anti-recommendations** — Detects the kinds of games you *bounce off* (launched, barely played, never returned) and groups them into clusters, e.g. "you've bounced off 4 free-to-play games".
+- **Wishlist scoring** — Your Steam wishlist ranked by how likely you are to actually play each game, with a plain-language reason ("Because you played Deep Rock Galactic and Hunt: Showdown 1896 · Co-op"). Needs embeddings.
+- **Discover feed** — Ranks unowned Steam catalog games against your taste vector. Go to **🧭 Taste Profile** and switch to the **Discover** tab. Needs embeddings + the optional `data/catalog/games.json` dataset.
+- **More like this** — On any game's Inspector the *Similar* list now uses vector similarity across the catalog, with an **unexpected** badge when the match crosses genres.
+
+**Anti-cluster tuning (deviation from Gamekeeper):** the original rule flags a tag when `bounced / (bounced + engaged) ≥ 0.6`. That assumes a small, mostly-played library; on a large backlog almost every tag with 2+ bounces reaches that ratio, which produced meaningless clusters (a single 147-game "Indie" blob). Three extra guards — maximum prevalence, minimum bounce *lift* over the library's own baseline, and a merge cap — are applied only to libraries above 50 launched games, so small-library behaviour is unchanged.
+
+### Catalog Setup
+
+1. Place FronkonGames/Steam's `games.json` at `data/catalog/games.json`.
+2. In **Settings › 📦 Steam Catalog** click **Import & embed catalog**. It filters out owned/wishlisted games, keeps entries with tags and ≥100 reviews (≈20k games), and embeds them in batches.
+3. Switch to **🧭 Taste Profile › Discover** once embedded.
+
 ### Data Safety & Recovery
 
 - **Auto-backup on exit** — When the dev server stops cleanly, if any data changed during the session, a timestamped backup is saved to `data/backups/` with a delta log showing what changed (games added/removed, tag assignments).
@@ -136,10 +171,33 @@ Then use the sync buttons to pull your library.
 
 ---
 
+## AI Provider (optional)
+
+Everything above works without AI. Configuring a provider additionally enables **similarity ranking**, **wishlist scoring** and **Discover**.
+
+Any **OpenAI-compatible** endpoint works — Ollama, LM Studio, vLLM, OpenAI, OpenRouter — because only `/v1/embeddings`, `/v1/chat/completions` and `/v1/models` are used. Swapping engines means changing the base URL and the model names, nothing else.
+
+### Setup with Ollama
+
+```bash
+ollama pull nomic-embed-text      # 768-d embeddings, ~274 MB — required for Discover
+ollama pull qwen3:8b              # optional, only for chat
+```
+
+Then in **Settings › 🤖 AI**: set the **Base URL** (e.g. `http://192.168.1.50:11434`), pick the models and press **🔌 Test connection**. The status line reports embedding and chat readiness separately, since a missing chat model does not prevent embedding. With the Ollama flavour selected you can also pull a model straight from the UI.
+
+Finally, run **Settings › 🧬 Embeddings → Build embeddings**. One vector per owned/wishlist game is built from its top community tags, genres and short description. Each row stores a text hash and the model name, so re-running only embeds what actually changed and a partial run is safe to resume. Changing the embedding model invalidates every vector.
+
+### Notes
+
+- **Credentials in the base URL** (`https://user:pass@host`) are supported for reverse-proxied instances. Node's `fetch` rejects such URLs outright, so they are split out into an HTTP Basic `Authorization` header; an explicit API key takes precedence. Beware that an `http://` → `https://` redirect drops the header (the origin changes) — point the base URL at the final scheme directly. `/api/ai/health` masks the credentials in its response.
+- **Secrets are stored in plaintext** in the `settings` table and are returned by `GET /api/settings`, exactly like `steam_api_key`. This app is built to run on a trusted local network — do not expose it to the internet.
+- Nomic's task prefixes (`search_document:` etc.) are intentionally **not** used: measured against tag-overlap ground truth on a real library they did not improve ranking correlation (0.577 raw vs 0.576 `clustering:` vs 0.505 `search_document:`) and narrowed the score spread.
+
 ## Tech Stack
 
 - **Next.js 16** with App Router and Turbopack
-- **SQLite** via better-sqlite3 (WAL mode)
+- **SQLite** via Node's built-in `node:sqlite` (WAL mode)
 - **Tailwind CSS v4** for styling
 - **TypeScript** throughout
 
@@ -150,6 +208,7 @@ All data lives locally:
 - `data/games.db` — SQLite database (auto-created on first run)
 - `data/assets/games/<appid>/` — Cached images per game (header, screenshots, movie thumbnails)
 - `data/backups/` — Timestamped DB backups with change logs (auto-created on exit if data changed)
+- `data/catalog/` — Optional Steam catalog dataset for Discover over games you don't own
 - `data/audit.log` — Append-only log of all write operations
 
 The `data/` directory is gitignored. Your database and images stay on your machine.

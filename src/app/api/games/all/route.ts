@@ -34,8 +34,23 @@ export function GET() {
     if (!tagMap.has(row.game_id)) tagMap.set(row.game_id, []);
     tagMap.get(row.game_id)!.push(row);
   }
+
+  const classMap = new Map<number, { category: string; reason: string; confidence: string; override_category: string | null }>();
+  for (const row of db.prepare("SELECT game_id, category, reason, confidence, override_category FROM game_classification").all() as { game_id: number; category: string; reason: string; confidence: string; override_category: string | null }[]) {
+    classMap.set(row.game_id, row);
+  }
+
+  const hltbMap = new Map<number, { main_hours: number | null; extra_hours: number | null; completionist_hours: number | null; match_status: string; hltb_id: number | null; hltb_name: string | null }>();
+  for (const row of db.prepare("SELECT appid, hltb_id, hltb_name, main_hours, extra_hours, completionist_hours, match_status FROM hltb").all() as { appid: number; hltb_id: number | null; hltb_name: string | null; main_hours: number | null; extra_hours: number | null; completionist_hours: number | null; match_status: string }[]) {
+    hltbMap.set(row.appid, row);
+  }
+
   for (const game of games) {
     game.tags = tagMap.get(game.id) || [];
+    const cls = classMap.get(game.id);
+    if (cls) (game as Record<string, unknown>).classification = cls;
+    const h = game.steam_appid != null ? hltbMap.get(game.steam_appid) : undefined;
+    if (h) (game as Record<string, unknown>).hltb = h;
   }
 
   return NextResponse.json(games);

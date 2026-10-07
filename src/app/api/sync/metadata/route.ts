@@ -394,6 +394,7 @@ function rebuildOneGame(
   maxSS: number, maxMov: number,
 ) {
   let steamName: string | null = null;
+  let appType = "";
   let desc = "", genres: string[] = [], feats: string[] = [], devs = "", pubs = "";
   let relDate = "", mc = 0, ss: string[] = [];
   let ctags: unknown[] = [];
@@ -406,6 +407,7 @@ function rebuildOneGame(
       if (dd?.[String(appid)]?.success) {
         const d = dd[String(appid)].data!;
         steamName = (d.name as string) || null;
+        appType = (d.type as string) || "";
         desc = (d.short_description as string) || "";
         genres = ((d.genres as { description: string }[]) || []).map((x) => x.description);
         feats = ((d.categories as { description: string }[]) || []).map((x) => x.description);
@@ -444,9 +446,9 @@ function rebuildOneGame(
 
   db.prepare(`UPDATE games SET name = COALESCE(?, name), description = ?, steam_genres = ?, steam_features = ?, community_tags = ?,
     developers = ?, publishers = ?, release_date = ?, review_sentiment = ?, positive_percent = ?, total_reviews = ?, metacritic_score = ?,
-    screenshots = ?, movies = ?, total_screenshots = ?, total_movies = ?, updated_at = datetime('now') WHERE id = ?`
+    screenshots = ?, movies = ?, total_screenshots = ?, total_movies = ?, app_type = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(steamName, desc, JSON.stringify(genres), JSON.stringify(feats), JSON.stringify(ctags),
-    devs, pubs, relDate, sent, pct, total, mc, JSON.stringify(ss), JSON.stringify(movies), totalSS, totalMov, gameId);
+    devs, pubs, relDate, sent, pct, total, mc, JSON.stringify(ss), JSON.stringify(movies), totalSS, totalMov, appType, gameId);
 }
 
 function rebuildFromCache(

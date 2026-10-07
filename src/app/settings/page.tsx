@@ -17,6 +17,9 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
   const [syncRunning, setSyncRunning] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
   const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null);
+  const [achMode, setAchMode] = useState("missing");
+  const [hltbMode, setHltbMode] = useState("missing");
+  const [hltbStatus, setHltbStatus] = useState<{ matched: number; noMatch: number; notFetched: number } | null>(null);
   const [showIgnoredInput, setShowIgnoredInput] = useState(false);
   const [lanIps, setLanIps] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState(params?.tab || "steam");
@@ -26,7 +29,10 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
   const fetchMetaStatus = useCallback(async () => {
     try { const r = await fetch("/api/sync/metadata"); if (r.ok) setMetaStatus(await r.json()); } catch { /* ignore */ }
   }, []);
-  useEffect(() => { fetchMetaStatus(); }, [fetchMetaStatus]);
+  const fetchHltbStatus = useCallback(async () => {
+    try { const r = await fetch("/api/hltb/status"); if (r.ok) setHltbStatus(await r.json()); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { fetchMetaStatus(); fetchHltbStatus(); }, [fetchMetaStatus, fetchHltbStatus]);
   useEffect(() => { fetch("/api/network").then(r => r.json()).then(d => setLanIps(d.ips || [])).catch(() => {}); }, []);
   const runSync = useCallback(async (endpoint: string, label: string) => {
     if (syncRunning) return;
@@ -51,8 +57,8 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
         }
       }
     } catch (err) { appendLog(`Error: ${err}`); }
-    setSyncRunning(null); setSyncProgress(null); fetchMetaStatus();
-  }, [syncRunning, appendLog, fetchMetaStatus]);
+    setSyncRunning(null); setSyncProgress(null); fetchMetaStatus(); fetchHltbStatus();
+  }, [syncRunning, appendLog, fetchMetaStatus, fetchHltbStatus]);
   useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setSettings); }, []);
   const update = async (key: string, value: string) => {
     setSaving(true); setSettings((s) => ({ ...s, [key]: value }));
@@ -79,6 +85,7 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
             { id: "steam", label: "🔑 Steam & Sync" },
             { id: "display", label: "🎨 Display" },
             { id: "recommend", label: "🎯 Recommend" },
+            { id: "ai", label: "🤖 AI" },
             { id: "tags", label: "🏷️ Tags" },
             { id: "system", label: "🗄️ System" },
           ].map(t => (
@@ -222,6 +229,14 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
                   className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent" />
               </label>
             </div>
+            <div className="flex gap-4 mt-1">
+              <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+                <input type="checkbox" checked={settings.show_status_dot !== "0"}
+                  onChange={(e) => update("show_status_dot", e.target.checked ? "1" : "0")}
+                  className="accent-accent" />
+                Status dot (classification)
+              </label>
+            </div>
           </div>
           {/* Clipboard Matching */}
           <div className="bg-surface rounded-lg p-4 border border-border" id="section-clipboard">
@@ -327,6 +342,32 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
               <SyncBtn label="🖼 Download Images" color="purple" running={syncRunning} id="images" onClick={() => runSync("/api/sync/images", "images")} />
               <SyncBtn label="🔁 Retry 404s" color="orange" running={syncRunning} id="images-retry" onClick={() => runSync("/api/sync/images?retry404=true", "images-retry")} />
               <SyncBtn label="🚫 Import Ignored" color="red" running={syncRunning} id="ignored" onClick={() => setShowIgnoredInput(true)} />
+            </div>
+            <div className="flex gap-2 mb-3 items-center">
+              <SyncBtn label="🏆 Sync Achievements" color="yellow" running={syncRunning} id="achievements" onClick={() => runSync(`/api/sync/achievements?mode=${achMode}`, "achievements")} />
+              <select value={achMode} onChange={(e) => setAchMode(e.target.value)}
+                className="bg-background border border-border rounded px-2 py-1 text-xs text-muted">
+                <option value="missing">missing</option>
+                <option value="stale">stale (playtime changed)</option>
+                <option value="all">all</option>
+              </select>
+            </div>
+            <div className="flex gap-2 mb-1 items-center">
+              <SyncBtn label="⏳ Fetch completion times" color="blue" running={syncRunning} id="hltb" onClick={() => runSync(`/api/sync/hltb?mode=${hltbMode}`, "hltb")} />
+              <select value={hltbMode} onChange={(e) => setHltbMode(e.target.value)}
+                className="bg-background border border-border rounded px-2 py-1 text-xs text-muted">
+                <option value="missing">missing</option>
+                <option value="nomatch">missing + no match</option>
+                <option value="all">all</option>
+              </select>
+              {hltbStatus && (
+                <span className="text-[10px] text-muted">
+                  {hltbStatus.matched} matched · {hltbStatus.noMatch} no match · {hltbStatus.notFetched} not fetched
+                </span>
+              )}
+            </div>
+            <div className="text-[9px] text-muted/70 mb-3">
+              Data from <a href="https://howlongtobeat.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">HowLongToBeat</a> — unofficial API, may break without notice.
             </div>
             {showIgnoredInput && (
               <div className="mb-3 p-3 rounded border border-red-500/30 bg-red-500/5 space-y-2">
@@ -540,6 +581,11 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
           {/* Recommendation Weights */}
           <RecWeightsConfig settings={settings} onUpdate={update} appendLog={appendLog} />
           </div>{/* end recommend tab */}
+          {/* ═══ AI TAB ═══ */}
+          <div className={activeTab !== "ai" ? "hidden" : "space-y-6"}>
+          <AiSettings settings={settings} onUpdate={update} appendLog={appendLog}
+            runSync={runSync} syncRunning={syncRunning} />
+          </div>{/* end ai tab */}
           {/* ═══ SYSTEM TAB part 2 ═══ */}
           <div className={activeTab !== "system" ? "hidden" : "space-y-6"}>
           {/* UI Preferences */}
@@ -570,6 +616,31 @@ export default function SettingsPage({ searchParams }: { searchParams?: Promise<
           </div>{/* end system tab part 2 */}
           {/* ═══ TAGS TAB ═══ */}
           <div className={activeTab !== "tags" ? "hidden" : "space-y-6"}>
+          {/* Classification */}
+          <div className="bg-surface rounded-lg p-4 border border-border">
+            <h2 className="text-sm font-medium mb-1">📊 Status Classification</h2>
+            <p className="text-xs text-muted mb-3">Rule-based classification of owned games into Completed / In Progress / Endless / Not a Game. Results persist and are mirrored to <code className="bg-background px-1 rounded">auto › status</code> subtags. Manual overrides (Inspector → Status) always win. &quot;Classify new&quot; only processes games without a saved result; &quot;Re-classify all&quot; re-runs every owned game.</p>
+            <div className="flex gap-2">
+              <button disabled={!!syncRunning} onClick={async () => {
+                appendLog("Classifying new games...");
+                try {
+                  const res = await fetch("/api/classify?mode=new", { method: "POST" });
+                  const d = await res.json();
+                  if (d.ok) appendLog(`✓ Classified ${d.classified} new (${Object.entries(d.byCategory as Record<string, number>).map(([k, v]) => `${k}: ${v}`).join(", ")}), ${d.skipped} skipped`);
+                  else appendLog("Error: " + JSON.stringify(d));
+                } catch (err) { appendLog(`Error: ${err}`); }
+              }} className="px-3 py-1.5 rounded text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 disabled:opacity-50">▶ Classify new games</button>
+              <button disabled={!!syncRunning} onClick={async () => {
+                appendLog("Re-classifying all owned games...");
+                try {
+                  const res = await fetch("/api/classify?mode=all", { method: "POST" });
+                  const d = await res.json();
+                  if (d.ok) appendLog(`✓ Re-classified ${d.classified} (${Object.entries(d.byCategory as Record<string, number>).map(([k, v]) => `${k}: ${v}`).join(", ")})`);
+                  else appendLog("Error: " + JSON.stringify(d));
+                } catch (err) { appendLog(`Error: ${err}`); }
+              }} className="px-3 py-1.5 rounded text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 disabled:opacity-50">⟳ Re-classify all</button>
+            </div>
+          </div>
           {/* Tag & Subtag Management */}
           <div id="section-tags"><TagManager /></div>
           </div>{/* end tags tab */}
@@ -1150,6 +1221,217 @@ function RecWeightsConfig({ settings, onUpdate, appendLog }: { settings: Record<
         </div>
       )}
     </div>
+  );
+}
+
+type AiHealth = {
+  ok: boolean; detail: string; latencyMs?: number;
+  embedOk?: boolean; chatOk?: boolean; models?: string[];
+  baseUrl: string; embedModel: string; chatModel: string; flavor: string; hasApiKey: boolean;
+};
+type EmbedStatus = { model: string; current: number; stale: number; candidates: number };
+
+function AiSettings({ settings, onUpdate, appendLog, runSync, syncRunning }: {
+  settings: Record<string, string>;
+  onUpdate: (k: string, v: string) => void;
+  appendLog: (msg: string) => void;
+  runSync: (endpoint: string, label: string) => Promise<void>;
+  syncRunning: string | null;
+}) {
+  const [health, setHealth] = useState<AiHealth | null>(null);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [embed, setEmbed] = useState<EmbedStatus | null>(null);
+  const [pullModel, setPullModel] = useState("");
+
+  const baseUrl = settings.ai_base_url || "";
+  const flavor = settings.ai_flavor || "ollama";
+  const embedModel = settings.ai_embed_model || "nomic-embed-text";
+  const chatModel = settings.ai_chat_model || "qwen3:8b";
+
+  const refreshEmbed = useCallback(async () => {
+    try {
+      const r = await fetch("/api/sync/embeddings");
+      setEmbed(r.ok ? await r.json() : null);
+    } catch { setEmbed(null); }
+  }, []);
+
+  useEffect(() => { if (baseUrl) refreshEmbed(); }, [baseUrl, refreshEmbed]);
+
+  const test = async () => {
+    setTesting(true);
+    setModels(null);
+    try {
+      const r = await fetch("/api/ai/health");
+      const h = await r.json() as AiHealth;
+      setHealth(h);
+      appendLog(h.ok ? `✓ AI provider OK (${h.latencyMs}ms): ${h.detail}` : `AI provider: ${h.detail}`);
+      // health() already listed the models — no need for a second round trip.
+      if (h.models) setModels(h.models);
+      refreshEmbed();
+    } catch (e) { appendLog(`AI health error: ${e}`); }
+    setTesting(false);
+  };
+
+  return (
+    <>
+      <div className="bg-surface rounded-lg p-4 border border-border" id="section-ai">
+        <h2 className="text-sm font-medium mb-1">🤖 AI Provider</h2>
+        <p className="text-xs text-muted mb-3">
+          Any OpenAI-compatible endpoint works — Ollama, LM Studio, vLLM, OpenAI, OpenRouter.
+          Only <code className="bg-background px-1 rounded">/v1/embeddings</code>, <code className="bg-background px-1 rounded">/v1/chat/completions</code> and <code className="bg-background px-1 rounded">/v1/models</code> are used,
+          so swapping engines means changing the base URL and model names. Embeddings power the taste profile and Discover; the chat model is optional.
+        </p>
+        <div className="flex gap-3 mb-3">
+          <label className="flex-[2]"><span className="text-xs text-muted">Base URL</span>
+            <input type="text" value={baseUrl} placeholder="http://192.168.1.50:5005"
+              onChange={(e) => onUpdate("ai_base_url", e.target.value)}
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+          </label>
+          <label className="flex-1"><span className="text-xs text-muted">API key (optional)</span>
+            <input type="password" value={settings.ai_api_key || ""}
+              onChange={(e) => onUpdate("ai_api_key", e.target.value)}
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+          </label>
+          <label className="flex-1"><span className="text-xs text-muted">Flavor</span>
+            <select value={flavor} onChange={(e) => onUpdate("ai_flavor", e.target.value)}
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-accent">
+              <option value="ollama">Ollama (enables model pull)</option>
+              <option value="openai">OpenAI-compatible only</option>
+            </select>
+          </label>
+        </div>
+        <div className="flex gap-3 mb-3">
+          <label className="flex-1"><span className="text-xs text-muted">Embedding model</span>
+            <input type="text" value={embedModel} list="ai-model-list"
+              onChange={(e) => onUpdate("ai_embed_model", e.target.value)}
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+          </label>
+          <label className="flex-1"><span className="text-xs text-muted">Chat model</span>
+            <input type="text" value={chatModel} list="ai-model-list"
+              onChange={(e) => onUpdate("ai_chat_model", e.target.value)}
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+          </label>
+          <datalist id="ai-model-list">
+            {(models || []).map((m) => <option key={m} value={m} />)}
+          </datalist>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button onClick={test} disabled={testing || !baseUrl}
+            className="px-3 py-1.5 rounded text-xs border border-accent/50 text-accent hover:bg-accent/10 disabled:opacity-50">
+            {testing ? "Testing…" : "🔌 Test connection"}
+          </button>
+          {health && (
+            <>
+              <span className={`text-[11px] ${health.ok ? "text-green-400" : "text-yellow-400"}`}>
+                {health.ok ? "✓" : "⚠"} {health.detail}
+              </span>
+              {health.models && (
+                <span className="text-[10px] text-muted flex gap-2">
+                  <span className={health.embedOk ? "text-green-400" : "text-yellow-400"}>
+                    {health.embedOk ? "✓" : "⚠"} embeddings
+                  </span>
+                  <span className={health.chatOk ? "text-green-400" : "text-muted"}>
+                    {health.chatOk ? "✓" : "–"} chat
+                  </span>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {models && models.length > 0 && (
+          <div className="mt-2 text-[10px] text-muted">
+            <span className="text-muted/70">Available models:</span> {models.join(", ")}
+          </div>
+        )}
+        {flavor === "ollama" && (
+          <div className="mt-3 pt-3 border-t border-border/40 flex gap-2 items-center">
+            <input type="text" value={pullModel} onChange={(e) => setPullModel(e.target.value)}
+              placeholder="nomic-embed-text"
+              className="w-56 bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-accent" />
+            <button disabled={!!syncRunning || !pullModel.trim() || !baseUrl}
+              onClick={() => runSync(`/api/ai/pull?model=${encodeURIComponent(pullModel.trim())}`, "ai-pull")}
+              className="px-3 py-1.5 rounded text-xs border border-purple-500/50 text-purple-400 hover:bg-purple-500/10 disabled:opacity-50">
+              ⬇ Pull model
+            </button>
+            <span className="text-[10px] text-muted">
+              Needs <code className="bg-background px-1 rounded">nomic-embed-text</code> (768-d, 274 MB) for embeddings.
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface rounded-lg p-4 border border-border" id="section-embeddings">
+        <h2 className="text-sm font-medium mb-1">🧬 Embeddings</h2>
+        <p className="text-xs text-muted mb-3">
+          One vector per owned/wishlist game, built from its top community tags, genres and short description.
+          Re-running only embeds games whose text or model changed, so it is safe to resume.
+          Changing the embedding model invalidates every vector.
+        </p>
+        {embed && (
+          <div className="mb-3 p-2.5 bg-background rounded border border-border text-[11px] flex gap-4 flex-wrap">
+            <span>Model: <span className="text-foreground font-mono">{embed.model}</span></span>
+            <span className="text-green-400">{embed.current} current</span>
+            {embed.stale > 0 && <span className="text-yellow-400">{embed.stale} stale (different model)</span>}
+            <span className="text-muted">{Math.max(0, embed.candidates - embed.current)} missing of {embed.candidates} games</span>
+          </div>
+        )}
+        <div className="flex gap-2 items-center flex-wrap">
+          <SyncBtn label="🧬 Embed missing" color="green" running={syncRunning} id="embed-missing"
+            onClick={() => runSync("/api/sync/embeddings?mode=missing", "embed-missing").then(refreshEmbed)} />
+          <SyncBtn label="⟳ Re-embed all" color="yellow" running={syncRunning} id="embed-all"
+            onClick={() => runSync("/api/sync/embeddings?mode=all", "embed-all").then(refreshEmbed)} />
+          <button onClick={refreshEmbed} className="text-[10px] text-muted hover:text-foreground">↻ Refresh counts</button>
+          <div className="flex-1" />
+          <Link href="/taste" className="px-3 py-1.5 rounded text-xs border border-border text-muted hover:text-foreground hover:border-accent">
+            🧭 Open Taste Profile
+          </Link>
+        </div>
+        <p className="text-[10px] text-muted/70 mt-2">
+          The taste profile itself is deterministic — it needs these vectors, not a running model.
+          Tag affinities and bounce detection work even with no vectors at all.
+        </p>
+      </div>
+
+      <div className="bg-surface rounded-lg p-4 border border-border" id="section-catalog">
+        <h2 className="text-sm font-medium mb-1">📦 Steam Catalog</h2>
+        <p className="text-xs text-muted mb-3">
+          Import the optional <code className="bg-background px-1 rounded">data/catalog/games.json</code> dataset
+          and build embeddings for unowned games. This powers the <strong>Discover feed</strong> and
+          vector-based <strong>More like this</strong> recommendations.
+        </p>
+        <CatalogSyncPanel runSync={runSync} syncRunning={syncRunning} />
+      </div>
+    </>
+  );
+}
+
+function CatalogSyncPanel({ runSync, syncRunning }: {
+  runSync: (endpoint: string, label: string) => Promise<void>;
+  syncRunning: string | null;
+}) {
+  const [status, setStatus] = useState<{ total: number; embedded: number } | null>(null);
+  const refresh = useCallback(async () => {
+    try { const r = await fetch("/api/sync/catalog"); setStatus(r.ok ? await r.json() : null); }
+    catch { setStatus(null); }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  return (
+    <>
+      {status && (
+        <div className="mb-3 p-2.5 bg-background rounded border border-border text-[11px] flex gap-4 flex-wrap">
+          <span>Catalog rows: <span className="text-foreground font-mono">{status.total.toLocaleString()}</span></span>
+          <span className="text-green-400">{status.embedded.toLocaleString()} embedded</span>
+          <span className="text-muted">{Math.max(0, status.total - status.embedded).toLocaleString()} missing</span>
+          <button onClick={refresh} className="text-muted hover:text-foreground">↻ Refresh</button>
+        </div>
+      )}
+      <div className="flex gap-2 items-center flex-wrap">
+        <SyncBtn label="📥 Import & embed catalog" color="green" running={syncRunning} id="catalog"
+          onClick={() => runSync("/api/sync/catalog?minReviews=100", "catalog").then(refresh)} />
+        <span className="text-[10px] text-muted">Filters out owned/wishlisted games and entries with &lt;100 reviews.</span>
+      </div>
+    </>
   );
 }
 

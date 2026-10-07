@@ -1,4 +1,5 @@
 import { getDb, ensureSteamTag, getSteamCredentials } from "@/lib/db";
+import { classifyGames } from "@/lib/classify";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function POST() {
         const data = await res.json() as {
           response?: {
             game_count?: number;
-            games?: { appid: number; name: string; playtime_forever?: number }[];
+            games?: { appid: number; name: string; playtime_forever?: number; playtime_2weeks?: number; rtime_last_played?: number }[];
           };
         };
         const games = data?.response?.games || [];
@@ -64,9 +65,10 @@ export async function POST() {
         send({ type: "status", message: `Wishlist dates: ${wishlistDates.size} entries` });
 
         const findGame = db.prepare("SELECT id FROM games WHERE steam_appid = ?");
-        const insGame = db.prepare("INSERT INTO games (name, steam_appid, wishlist_date, added_at) VALUES (?, ?, ?, ?)");
+        const insGame = db.prepare("INSERT INTO games (name, steam_appid, wishlist_date, added_at, playtime_forever, playtime_2weeks, rtime_last_played) VALUES (?, ?, ?, ?, ?, ?, ?)");
         const insGT = db.prepare("INSERT OR IGNORE INTO game_tags (game_id, tag_id, subtag_id) VALUES (?, ?, ?)");
         const updateWishDate = db.prepare("UPDATE games SET wishlist_date = ? WHERE id = ? AND (wishlist_date IS NULL OR wishlist_date = '')");
+        const updatePlaytime = db.prepare("UPDATE games SET playtime_forever = ?, playtime_2weeks = ?, rtime_last_played = ? WHERE id = ?");
 
         let added = 0, existing = 0, tagged = 0;
         const today = new Date().toISOString().split("T")[0];
@@ -81,8 +83,9 @@ export async function POST() {
             if (r.changes > 0) tagged++;
             // Backfill wishlist_date if we have it and game doesn't
             if (wishDate) updateWishDate.run(wishDate, ex.id);
+            updatePlaytime.run(g.playtime_forever || 0, g.playtime_2weeks || 0, g.rtime_last_played || 0, ex.id);
           } else {
-            const gameId = Number(insGame.run(g.name, g.appid, wishDate, today).lastInsertRowid);
+            const gameId = Number(insGame.run(g.name, g.appid, wishDate, today, g.playtime_forever || 0, g.playtime_2weeks || 0, g.rtime_last_played || 0).lastInsertRowid);
             insGT.run(gameId, tagId, ownedSubId);
             added++;
             tagged++;
@@ -92,6 +95,11 @@ export async function POST() {
             send({ type: "progress", current: i + 1, total: games.length, added, existing });
           }
         }
+
+        try {
+          const res = classifyGames(db, { mode: "new" });
+          send({ type: "status", message: `Classified ${res.classified} games (${Object.entries(res.byCategory).map(([k, v]) => `${k}: ${v}`).join(", ")})` });
+        } catch (e) { send({ type: "status", message: `Classification skipped: ${e}` }); }
 
         send({
           type: "done",

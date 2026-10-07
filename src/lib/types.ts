@@ -40,6 +40,10 @@ export interface Game {
   added_at: string | null;
   queue_position: number | null;
   user_rating: number | null;
+  playtime_forever: number; // minutes
+  playtime_2weeks: number;  // minutes
+  rtime_last_played: number; // unix seconds
+  app_type: string;
   created_at: string;
   updated_at: string;
   tags?: GameTag[];
@@ -56,8 +60,26 @@ export interface GameTag {
   subtag_type: "genre" | "meta" | null;
 }
 
+export interface GameClassification {
+  category: "COMPLETED" | "IN_PROGRESS" | "ENDLESS" | "NOT_A_GAME";
+  reason: string;
+  confidence: string;
+  override_category: "COMPLETED" | "IN_PROGRESS" | "ENDLESS" | "NOT_A_GAME" | null;
+}
+
+export interface GameHltb {
+  hltb_id: number | null;
+  hltb_name: string | null;
+  main_hours: number | null;
+  extra_hours: number | null;
+  completionist_hours: number | null;
+  match_status: string;
+}
+
 export interface GameWithTags extends Game {
   tags: GameTag[];
+  classification?: GameClassification | null;
+  hltb?: GameHltb | null;
 }
 
 

@@ -90,6 +90,10 @@ export default function FilterChips({ tags, subtags, filters, onChange, onClearS
     chips.push({ label: `Score: ${filters.scoreMin ?? 0}–${filters.scoreMax ?? 100}%`, color: "#22c55e", type: "include",
       onRemove: () => onChange({ ...filters, scoreMin: undefined, scoreMax: undefined }) });
   }
+  if (filters.hltbMaxHours !== undefined) {
+    chips.push({ label: `≤ ${filters.hltbMaxHours}h to beat`, color: "#38bdf8", type: "include",
+      onRemove: () => onChange({ ...filters, hltbMaxHours: undefined, hltbIncludeUnknown: undefined }) });
+  }
   if (filters.reviewsMin !== undefined || filters.reviewsMax !== undefined) {
     chips.push({ label: `Reviews: ${filters.reviewsMin ?? 0}–${filters.reviewsMax ?? "∞"}`, color: "#8b5cf6", type: "include",
       onRemove: () => onChange({ ...filters, reviewsMin: undefined, reviewsMax: undefined }) });
@@ -118,7 +122,7 @@ export default function FilterChips({ tags, subtags, filters, onChange, onClearS
           includeGenres: [], excludeGenres: def.excludeGenres || [],
           includeFeatures: [], excludeFeatures: def.excludeFeatures || [], includeCommunityTags: [], excludeCommunityTags: def.excludeCommunityTags || [],
           includeDevelopers: [], excludeDevelopers: def.excludeDevelopers || [], includePublishers: [], excludePublishers: def.excludePublishers || [],
-          untagged: false, withNotes: false, metadataMissing: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, search: undefined,
+          untagged: false, withNotes: false, metadataMissing: false, hideWishlistOnly: def.hideWishlistOnly || false, scoreMin: undefined, scoreMax: undefined, reviewsMin: undefined, reviewsMax: undefined, hltbMaxHours: undefined, hltbIncludeUnknown: undefined, search: undefined,
         }); onClearSearch?.();
       }} className="text-[10px] text-danger hover:underline ml-1">Clear all</button>
       <button onClick={() => {

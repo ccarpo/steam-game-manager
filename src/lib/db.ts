@@ -7,7 +7,7 @@ import { pushLog } from "./log-buffer";
 /** Log to both console and UI buffer */
 function dbLog(msg: string) { pushLog("SYSTEM", msg); console.log(`[db] ${msg}`); }
 
-const DB_DIR = path.join(process.cwd(), "data");
+const DB_DIR = process.env.GM_DATA_DIR || path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "games.db");
 const BACKUP_DIR = path.join(DB_DIR, "backups");
 
@@ -229,6 +229,73 @@ function initSchema(db: Database) {
       store_page_tags TEXT,
       fetched_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS steam_achievements (
+      appid INTEGER PRIMARY KEY,
+      total INTEGER DEFAULT 0,
+      achieved INTEGER DEFAULT 0,
+      names_achieved TEXT DEFAULT '[]',
+      playtime_at_fetch INTEGER DEFAULT 0,
+      fetched_at TEXT DEFAULT (datetime('now')),
+      status TEXT DEFAULT 'ok'
+    );
+
+    CREATE TABLE IF NOT EXISTS game_classification (
+      game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      confidence TEXT DEFAULT 'HIGH',
+      rules_version INTEGER DEFAULT 1,
+      classified_at TEXT DEFAULT (datetime('now')),
+      override_category TEXT,
+      override_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS embeddings (
+      source TEXT NOT NULL,
+      key INTEGER NOT NULL,
+      model TEXT NOT NULL,
+      dim INTEGER NOT NULL,
+      text_hash TEXT NOT NULL,
+      vector BLOB NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (source, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hltb (
+      appid INTEGER PRIMARY KEY,
+      hltb_id INTEGER,
+      hltb_name TEXT,
+      main_hours REAL,
+      extra_hours REAL,
+      completionist_hours REAL,
+      match_status TEXT DEFAULT 'no_match',
+      fetched_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Optional external Steam catalog for discovery/more-like-this beyond the library.
+    CREATE TABLE IF NOT EXISTS steam_catalog (
+      appid INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      release_date TEXT,
+      tags_json TEXT,
+      genres_json TEXT,
+      description TEXT,
+      developers_json TEXT,
+      publishers_json TEXT,
+      positive INTEGER DEFAULT 0,
+      negative INTEGER DEFAULT 0,
+      total_reviews INTEGER DEFAULT 0,
+      header_image TEXT,
+      embed_text TEXT NOT NULL,
+      text_hash TEXT NOT NULL,
+      imported_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add type column to subtags if missing
@@ -274,6 +341,20 @@ function initSchema(db: Database) {
     db.exec("ALTER TABLE games ADD COLUMN user_rating REAL");
   }
 
+  // Migration: playtime + app type columns for classification
+  if (!gameCols.some((c) => c.name === "playtime_forever")) {
+    db.exec("ALTER TABLE games ADD COLUMN playtime_forever INTEGER DEFAULT 0");
+  }
+  if (!gameCols.some((c) => c.name === "playtime_2weeks")) {
+    db.exec("ALTER TABLE games ADD COLUMN playtime_2weeks INTEGER DEFAULT 0");
+  }
+  if (!gameCols.some((c) => c.name === "rtime_last_played")) {
+    db.exec("ALTER TABLE games ADD COLUMN rtime_last_played INTEGER DEFAULT 0");
+  }
+  if (!gameCols.some((c) => c.name === "app_type")) {
+    db.exec("ALTER TABLE games ADD COLUMN app_type TEXT DEFAULT ''");
+  }
+
   // Startup: sync total_screenshots/total_movies from disk
   syncAssetCounts(db);
 
@@ -301,6 +382,32 @@ function initSchema(db: Database) {
 
   // Migration: merge old separate release/sentiment/score tags into unified "auto" tag
   migrateAutoTags(db);
+
+  // One-off backfill: games.app_type from steam_cache.appdetails
+  backfillAppType(db);
+}
+
+function backfillAppType(db: Database) {
+  const already = db.prepare("SELECT 1 FROM games WHERE app_type != '' AND app_type IS NOT NULL LIMIT 1").get();
+  if (already) return;
+  const games = db.prepare("SELECT id, steam_appid FROM games WHERE steam_appid IS NOT NULL").all() as { id: number; steam_appid: number }[];
+  if (games.length === 0) return;
+  const getCache = db.prepare("SELECT appdetails FROM steam_cache WHERE appid = ?");
+  const update = db.prepare("UPDATE games SET app_type = ? WHERE id = ?");
+  let filled = 0;
+  const tx = db.transaction(() => {
+    for (const g of games) {
+      const cached = getCache.get(g.steam_appid) as { appdetails: string } | undefined;
+      if (!cached?.appdetails) continue;
+      try {
+        const det = JSON.parse(cached.appdetails) as Record<string, { success: boolean; data?: { type?: string } }>;
+        const type = det?.[String(g.steam_appid)]?.data?.type;
+        if (type) { update.run(type, g.id); filled++; }
+      } catch { /* skip */ }
+    }
+  });
+  tx();
+  if (filled > 0) dbLog(`Backfilled app_type for ${filled} games from cache.`);
 }
 
 function migrateDevPubToJson(db: Database) {

@@ -397,6 +397,43 @@ export default function Sidebar({
           )}
         </div>
       </div>
+      {/* HLTB max-hours filter (log scale 0.5–100h) */}
+      <div className="px-2 py-1">
+        <div className="flex items-center gap-1 text-[10px]">
+          <span className="text-muted shrink-0">⏳ Beat</span>
+          {(() => {
+            const toHours = (t: number) => Math.round(0.5 * Math.pow(200, t / 100) * 10) / 10;
+            const toT = (h: number) => Math.round(Math.log(h / 0.5) / Math.log(200) * 100);
+            const val = filters.hltbMaxHours;
+            // 0–100 maps to 0.5–100h; 101 is the "no limit" stop so 100h stays selectable
+            return (
+              <>
+                <input type="range" min={0} max={101}
+                  value={val !== undefined ? toT(val) : 101}
+                  onChange={(e) => {
+                    const t = Number(e.target.value);
+                    onChange({ ...filters, hltbMaxHours: t > 100 ? undefined : toHours(t) });
+                  }}
+                  className="flex-1 accent-sky-500" />
+                <span className="text-muted w-12 text-right shrink-0">
+                  {val !== undefined ? `≤ ${val}h` : "no limit"}
+                </span>
+                {val !== undefined && (
+                  <button onClick={() => onChange({ ...filters, hltbMaxHours: undefined })} className="text-danger text-[10px]">✕</button>
+                )}
+              </>
+            );
+          })()}
+        </div>
+        {filters.hltbMaxHours !== undefined && (
+          <label className="flex items-center gap-1 mt-0.5 text-[9px] text-muted cursor-pointer">
+            <input type="checkbox" checked={filters.hltbIncludeUnknown || false}
+              onChange={(e) => onChange({ ...filters, hltbIncludeUnknown: e.target.checked || undefined })}
+              className="accent-sky-500" />
+            include unknown length
+          </label>
+        )}
+      </div>
       {/* Min community tags filter */}
       <div className="px-2 py-1">
         <div className="flex items-center gap-2 text-[10px]">
