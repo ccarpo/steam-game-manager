@@ -55,6 +55,11 @@ export class FlatIndex<T extends CandidateMeta> implements VectorIndex {
     return this.entries[row];
   }
 
+  /** Row index of the entry whose meta.appid matches, or -1. Linear scan — one-off lookups only. */
+  findIndexByAppid(appid: number): number {
+    return this.entries.findIndex((e) => e.meta.appid === appid);
+  }
+
   topMatches(query: Float32Array, k: number, keep?: (row: number, meta: CandidateMeta) => boolean): { row: number; sim: number }[] {
     if (!this.matrix || this.dim === 0 || query.length !== this.dim) return [];
     const scores: { row: number; sim: number }[] = [];

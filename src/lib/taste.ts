@@ -25,6 +25,11 @@ export interface GameSignal {
   vector: Float32Array | null;
   /** Community tags in vote order. */
   tags: string[];
+  /** Explicit deck>loved / deck>liked lift. */
+  deckLoved?: boolean;
+  deckLiked?: boolean;
+  /** Explicit deck>not_for_me — counts as a bounce for anti-cluster purposes. */
+  deckDisliked?: boolean;
 }
 
 export interface TagAffinity {
@@ -74,13 +79,16 @@ export interface TasteProfile {
 // Weights & bounce detection
 // ---------------------------------------------------------------------------
 
-/** w(g) = base * status * recency * current */
+/** w(g) = base * status * recency * current * deckBoost */
 export function gameWeight(sig: GameSignal, now: number): number {
   const base = Math.log(1 + sig.hours) / Math.log(1 + 64);
   let status: number;
   if (sig.category === "NOT_A_GAME") status = 0;
   else if (sig.category === "COMPLETED") status = 1.5;
   else status = 1 + 0.3 * Math.min((sig.achPct ?? 0) / 100, 1);
+
+  // Deck ratings are softer than playtime/completion but still shift the taste vector.
+  const deckBoost = sig.deckLoved ? 1.5 : sig.deckLiked ? 1.25 : 1;
 
   let recency: number;
   if (sig.rtimeLastPlayed === 0) {
@@ -90,12 +98,14 @@ export function gameWeight(sig: GameSignal, now: number): number {
     recency = 0.5 + 0.5 * Math.exp(-years / 2);
   }
   const current = sig.hours2weeks > 0 ? 1.25 : 1.0;
-  return base * status * recency * current;
+  return base * status * recency * current * deckBoost;
 }
 
 export type BounceKind = "none" | "bounced" | "abandoned";
 
 export function detectBounce(sig: GameSignal, now: number): BounceKind {
+  // Explicit deck dislike is a bounce regardless of completion status.
+  if (sig.deckDisliked) return "bounced";
   if (sig.category === "COMPLETED" || sig.category === "NOT_A_GAME") return "none";
   // Never-played games are neutral: you can't bounce off what you never launched.
   if (sig.rtimeLastPlayed === 0) return "none";

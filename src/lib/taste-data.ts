@@ -9,6 +9,8 @@ import {
   computeProfile, reasonFor, scoreCandidate,
 } from "./taste";
 
+export interface DeckTagFlags { loved: boolean; liked: boolean; disliked: boolean; }
+
 export interface LibraryRow {
   id: number;
   name: string;
@@ -44,6 +46,31 @@ const LIBRARY_SELECT = `
   LEFT JOIN hltb h ON h.appid = g.steam_appid
   WHERE g.steam_appid IS NOT NULL`;
 
+/** Maps game_id → deck tag flags (loved / liked / not_for_me). */
+export function fetchDeckTags(db: Database): Map<number, DeckTagFlags> {
+  const rows = db.prepare(`
+    SELECT gt.game_id,
+      MAX(CASE WHEN s.name = 'loved' THEN 1 END) AS loved,
+      MAX(CASE WHEN s.name = 'liked' THEN 1 END) AS liked,
+      MAX(CASE WHEN s.name = 'not_for_me' THEN 1 END) AS disliked
+    FROM game_tags gt
+    JOIN tags t ON t.id = gt.tag_id
+    JOIN subtags s ON s.id = gt.subtag_id
+    WHERE t.name = 'deck'
+    GROUP BY gt.game_id
+  `).all() as { game_id: number; loved: number | null; liked: number | null; disliked: number | null }[];
+
+  const out = new Map<number, DeckTagFlags>();
+  for (const r of rows) {
+    out.set(r.game_id, {
+      loved: !!r.loved,
+      liked: !!r.liked,
+      disliked: !!r.disliked,
+    });
+  }
+  return out;
+}
+
 export function parseTags(json: string | null): string[] {
   if (!json) return [];
   try {
@@ -75,7 +102,11 @@ export function signalTags(row: LibraryRow): string[] {
   return parseTags(row.steam_genres);
 }
 
-export function toSignal(row: LibraryRow, vectors: Map<number, Float32Array>): GameSignal {
+export function toSignal(
+  row: LibraryRow,
+  vectors: Map<number, Float32Array>,
+  deckFlags?: DeckTagFlags,
+): GameSignal {
   const achPct = row.ach_status === "ok" && row.ach_total && row.ach_total > 0
     ? ((row.ach_achieved || 0) / row.ach_total) * 100
     : null;
@@ -91,6 +122,9 @@ export function toSignal(row: LibraryRow, vectors: Map<number, Float32Array>): G
     hltbMainHours: row.hltb_main ?? null,
     vector: vectors.get(row.id) ?? null,
     tags: signalTags(row),
+    deckLoved: deckFlags?.loved,
+    deckLiked: deckFlags?.liked,
+    deckDisliked: deckFlags?.disliked,
   };
 }
 
@@ -107,9 +141,13 @@ export interface ProfileBundle {
 /** Computes the taste profile from scratch (cheap: a few ms for ~2k games). */
 export function buildProfile(db: Database, model: string, now = Math.floor(Date.now() / 1000)): ProfileBundle {
   const owned = fetchLibrary(db, "owned");
+  const deckTags = fetchDeckTags(db);
+  // Include explicitly disliked/liked unowned rows so deck votes shape the profile.
+  const extraRows = fetchDeckGames(db, owned.map((r) => r.id));
+  const allRows = [...owned, ...extraRows];
   const vectors = fetchVectors(db, model);
-  const signals = owned.map((r) => toSignal(r, vectors));
-  const byAppid = new Map(owned.map((r) => [r.steam_appid!, r]));
+  const signals = allRows.map((r) => toSignal(r, vectors, deckTags.get(r.id)));
+  const byAppid = new Map(allRows.map((r) => [r.steam_appid!, r]));
   return {
     profile: computeProfile(signals, now),
     signals,
@@ -118,6 +156,29 @@ export function buildProfile(db: Database, model: string, now = Math.floor(Date.
     withVectors: signals.filter((s) => s.vector).length,
     totalOwned: owned.length,
   };
+}
+
+/** Loads any non-owned games that carry a deck tag (e.g. liked/disliked catalog entries). */
+export function fetchDeckGames(db: Database, excludeIds: number[]): LibraryRow[] {
+  if (excludeIds.length === 0) return [];
+  const excludeSet = new Set(excludeIds);
+  const rows = db.prepare(`
+    SELECT DISTINCT g.id, g.name, g.steam_appid, g.playtime_forever, g.playtime_2weeks,
+           g.rtime_last_played, g.community_tags, g.steam_genres, g.positive_percent,
+           g.total_reviews, g.developers,
+           COALESCE(c.override_category, c.category) AS category,
+           a.total AS ach_total, a.achieved AS ach_achieved, a.status AS ach_status,
+           h.main_hours AS hltb_main
+    FROM games g
+    JOIN game_tags gt ON gt.game_id = g.id
+    JOIN tags t ON t.id = gt.tag_id AND t.name = 'deck'
+    LEFT JOIN game_classification c ON c.game_id = g.id
+    LEFT JOIN steam_achievements a ON a.appid = g.steam_appid
+    LEFT JOIN hltb h ON h.appid = g.steam_appid
+    WHERE g.id NOT IN (${excludeIds.map(() => "?").join(",")})
+    ORDER BY g.name
+  `).all(...excludeIds) as LibraryRow[];
+  return rows.filter((r) => !excludeSet.has(r.id));
 }
 
 export function toCandidateMeta(row: LibraryRow): CandidateMeta {
