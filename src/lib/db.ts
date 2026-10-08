@@ -296,6 +296,15 @@ function initSchema(db: Database) {
       text_hash TEXT NOT NULL,
       imported_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- Local user accounts (simple password auth today; OIDC/passkey/roles later)
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('reader','user','admin')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add type column to subtags if missing

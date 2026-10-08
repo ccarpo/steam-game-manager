@@ -703,6 +703,8 @@ export default function Home() {
           <a href="/releases" className="text-xs text-muted hover:text-foreground" title="Upcoming releases">📅</a>
           <a href="/stats" className="text-xs text-muted hover:text-foreground" title="Stats">📊</a>
           <a href="/settings" className="text-xs text-muted hover:text-foreground">⚙️</a>
+          <button onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }}
+            className="text-xs text-muted hover:text-foreground" title="Sign out">🚪</button>
         </div>
 
         {/* Filter chips */}

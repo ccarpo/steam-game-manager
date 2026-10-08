@@ -16,6 +16,8 @@ Everything runs on your machine — SQLite database, locally cached images, no c
 
 ```bash
 npm install
+# Set a session secret (required for auth)
+export AUTH_SECRET=$(openssl rand -hex 32)
 npm run dev
 ```
 
@@ -25,6 +27,18 @@ Open [http://localhost:3000](http://localhost:3000) and head to **Settings** to 
 2. **API Key** — Register at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
 
 Then use the sync buttons to pull your library.
+
+---
+
+## Authentication
+
+The app is protected by a login gate. The first person to sign in creates the admin account. From there, only signed-in users can access pages or API routes.
+
+- **Environment variable:** set `AUTH_SECRET` to a long random string (e.g. `openssl rand -hex 32`). In Docker, set it in a `.env` file or your shell before `docker compose up`.
+- **Session:** signed JWT in an HTTP-only `sgm-session` cookie, valid for 7 days.
+- **Logout:** 🚪 in the top bar.
+
+Future plans: role-based access (`reader`/`user`/`admin`), OIDC (e.g. Authentik), and passkey support. The `users` table already has a `role` column so the DB is ready for it.
 
 ---
 
